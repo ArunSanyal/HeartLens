@@ -1,0 +1,218 @@
+/* HeartLens - Global Styles */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
+
+/* ── CSS Variables ─────────────────────────────────────────────── */
+:root {
+  /* Primary palette */
+  --hl-primary: #2563eb;
+  --hl-primary-dark: #1d4ed8;
+  --hl-primary-light: #dbeafe;
+  --hl-primary-50: #eff6ff;
+
+  /* Accent */
+  --hl-accent: #0ea5e9;
+  --hl-accent-light: #e0f2fe;
+
+  /* Risk colors */
+  --hl-risk-low: #22c55e;
+  --hl-risk-moderate: #f59e0b;
+  --hl-risk-high: #ef4444;
+
+  /* Neutrals */
+  --hl-white: #ffffff;
+  --hl-bg: #f8fafc;
+  --hl-bg-alt: #f1f5f9;
+  --hl-border: #e2e8f0;
+  --hl-border-light: #f1f5f9;
+  --hl-text: #1e293b;
+  --hl-text-secondary: #475569;
+  --hl-text-muted: #94a3b8;
+
+  /* Shadows */
+  --hl-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --hl-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --hl-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.05);
+  --hl-shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.08), 0 4px 6px rgba(0, 0, 0, 0.04);
+
+  /* Typography */
+  --hl-font: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --hl-font-mono: 'DM Mono', ui-monospace, Consolas, monospace;
+
+  /* Spacing */
+  --hl-radius: 12px;
+  --hl-radius-lg: 16px;
+  --hl-radius-sm: 8px;
+}
+
+/* ── Reset ─────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  height: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100%;
+  width: 100%;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+body {
+  font-family: var(--hl-font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--hl-white);
+  color: var(--hl-text);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+a {
+  color: var(--hl-primary);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+a:hover {
+  color: var(--hl-primary-dark);
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+::selection {
+  background: var(--hl-primary-light);
+  color: var(--hl-text);
+}
+
+/* ── Utility classes ───────────────────────────────────────────── */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.container--narrow {
+  max-width: 800px;
+}
+
+.section {
+  padding: 80px 0;
+}
+
+.section--alt {
+  background: var(--hl-bg);
+}
+
+.section__label {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--hl-primary);
+  margin-bottom: 12px;
+}
+
+.section__title {
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--hl-text);
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+  margin-bottom: 16px;
+}
+
+.section__subtitle {
+  font-size: 17px;
+  color: var(--hl-text-secondary);
+  max-width: 600px;
+  line-height: 1.7;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 28px;
+  border-radius: var(--hl-radius-sm);
+  font-family: var(--hl-font);
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+}
+
+.btn--primary {
+  background: var(--hl-primary);
+  color: var(--hl-white);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+}
+
+.btn--primary:hover {
+  background: var(--hl-primary-dark);
+  color: var(--hl-white);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.35);
+}
+
+.btn--outline {
+  background: transparent;
+  color: var(--hl-primary);
+  border: 2px solid var(--hl-primary);
+}
+
+.btn--outline:hover {
+  background: var(--hl-primary-50);
+  color: var(--hl-primary-dark);
+}
+
+.btn--white {
+  background: var(--hl-white);
+  color: var(--hl-primary);
+  box-shadow: var(--hl-shadow);
+}
+
+.btn--white:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--hl-shadow-md);
+  color: var(--hl-primary-dark);
+}
+
+.btn--lg {
+  padding: 14px 36px;
+  font-size: 15px;
+  border-radius: var(--hl-radius);
+}

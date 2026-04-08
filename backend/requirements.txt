@@ -1,0 +1,11 @@
+flask==3.1.1
+flask-cors==5.0.1
+pandas==2.2.3
+numpy==2.2.5
+scikit-learn==1.6.1
+xgboost==2.1.4
+shap==0.46.0
+umap-learn==0.5.7
+anthropic==0.52.0
+python-dotenv==1.1.0
+joblib==1.4.2

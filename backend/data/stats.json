@@ -1,0 +1,54 @@
+{
+  "total_patients": 920,
+  "sites": {
+    "Cleveland": 303,
+    "Hungary": 294,
+    "VA Long Beach": 200,
+    "Switzerland": 123
+  },
+  "target_distribution": {
+    "1": 509,
+    "0": 411
+  },
+  "best_cv_accuracy": 0.9011,
+  "base_value": 0.2338,
+  "feature_names_encoded": [
+    "age",
+    "sex",
+    "trestbps",
+    "chol",
+    "fbs",
+    "thalach",
+    "exang",
+    "oldpeak",
+    "ca",
+    "cp_1",
+    "cp_2",
+    "cp_3",
+    "cp_4",
+    "restecg_0",
+    "restecg_1",
+    "restecg_2",
+    "slope_1",
+    "slope_2",
+    "slope_3",
+    "thal_3",
+    "thal_6",
+    "thal_7"
+  ],
+  "feature_names_original": [
+    "age",
+    "sex",
+    "cp",
+    "trestbps",
+    "chol",
+    "fbs",
+    "restecg",
+    "thalach",
+    "exang",
+    "oldpeak",
+    "slope",
+    "ca",
+    "thal"
+  ]
+}

@@ -1,0 +1,89 @@
+.hl-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 28px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  z-index: 100;
+}
+
+.hl-header__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hl-header__logo {
+  display: flex;
+  align-items: center;
+}
+
+.hl-header__title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+  letter-spacing: -0.5px;
+}
+
+.hl-header__subtitle {
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 0;
+  font-weight: 400;
+}
+
+.hl-header__stats {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.hl-header__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.hl-header__stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.hl-header__stat-value--accent {
+  color: #3b82f6;
+}
+
+.hl-header__stat-value--active {
+  color: #8b5cf6;
+}
+
+.hl-header__stat-label {
+  font-size: 11px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+.hl-header__clear {
+  padding: 6px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.hl-header__clear:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #334155;
+}

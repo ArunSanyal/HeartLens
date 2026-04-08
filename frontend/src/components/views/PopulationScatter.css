@@ -1,0 +1,101 @@
+.scatter-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.scatter-container svg {
+  flex: 1;
+  min-height: 0;
+}
+
+.scatter-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  flex-shrink: 0;
+}
+
+.scatter-toggle {
+  padding: 4px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.scatter-toggle:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.scatter-toggle.active {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #2563eb;
+}
+
+.scatter-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.scatter-legend__gradient {
+  width: 80px;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(to right, #22c55e, #84cc16, #eab308, #f97316, #ef4444);
+}
+
+.scatter-legend--sites {
+  gap: 10px;
+}
+
+.scatter-legend__site {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #64748b;
+}
+
+.scatter-legend__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.scatter-tooltip {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #334155;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 50;
+  transition: opacity 0.15s;
+  max-width: 220px;
+}
+
+.brush .selection {
+  fill: #3b82f6;
+  fill-opacity: 0.12;
+  stroke: #3b82f6;
+  stroke-width: 1;
+  stroke-dasharray: 4 2;
+}

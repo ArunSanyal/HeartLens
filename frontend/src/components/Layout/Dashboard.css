@@ -1,0 +1,136 @@
+.hl-dashboard {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #f1f5f9;
+  overflow: hidden;
+}
+
+.hl-dashboard__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 16px;
+  padding: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+.hl-panel {
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  transition: box-shadow 0.2s;
+}
+
+.hl-panel:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.hl-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-bottom: 1px solid #f1f5f9;
+  flex-shrink: 0;
+}
+
+.hl-panel__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+}
+
+.hl-panel__badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #3b82f6;
+  background: #eff6ff;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.hl-panel__body {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.hl-panel__body--chat {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Panel-specific accent colors */
+.hl-panel--scatter .hl-panel__badge {
+  color: #0ea5e9;
+  background: #f0f9ff;
+}
+
+.hl-panel--beeswarm .hl-panel__badge {
+  color: #8b5cf6;
+  background: #f5f3ff;
+}
+
+.hl-panel--detail .hl-panel__badge {
+  color: #f59e0b;
+  background: #fffbeb;
+}
+
+.hl-panel--chat .hl-panel__badge {
+  color: #10b981;
+  background: #ecfdf5;
+}
+
+/* Loading / Error states */
+.hl-dashboard--loading {
+  align-items: center;
+  justify-content: center;
+}
+
+.hl-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.hl-loading--error {
+  color: #ef4444;
+}
+
+.hl-loading__hint {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.hl-loading__hint code {
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.hl-loading__spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
