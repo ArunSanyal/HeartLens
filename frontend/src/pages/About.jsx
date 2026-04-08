@@ -105,8 +105,6 @@ export default function About() {
                   {t.name.split(' ').map(n => n[0]).join('')}
                 </div>
                 <h3 className="team-card__name">{t.name}</h3>
-                <p className="team-card__role">{t.role}</p>
-                <p className="team-card__focus">{t.focus}</p>
               </div>
             ))}
           </div>

@@ -90,7 +90,35 @@ export default function PopulationScatter() {
 
     const hasBrush = selectedPatientIds.size > 0;
 
-    // Points
+    // Brush FIRST (behind dots) so dots receive clicks
+    const brush = d3.brush()
+      .extent([[0, 0], [innerW, innerH]])
+      .on('end', (event) => {
+        if (!event.sourceEvent) return; // ignore programmatic clears
+        if (!event.selection) {
+          brushPatients([]);
+          return;
+        }
+        const [[x0, y0], [x1, y1]] = event.selection;
+        const ids = allPatients
+          .filter(d => {
+            const px = xScale(d.umapX);
+            const py = yScale(d.umapY);
+            return px >= x0 && px <= x1 && py >= y0 && py <= y1;
+          })
+          .map(d => d.id);
+        brushPatients(ids);
+        // Clear the brush rectangle after selection
+        g.select('.brush').call(brush.move, null);
+      });
+
+    g.append('g')
+      .attr('class', 'brush')
+      .call(brush);
+
+    // Points ON TOP of brush so they receive click events
+    const tooltip = d3.select(containerRef.current).select('.scatter-tooltip');
+
     const points = g.selectAll('.dot')
       .data(allPatients)
       .enter()
@@ -120,15 +148,11 @@ export default function PopulationScatter() {
         return 0.75;
       })
       .style('cursor', 'pointer')
+      .style('pointer-events', 'all')
       .on('click', (event, d) => {
         event.stopPropagation();
         selectPatient(d);
-      });
-
-    // Tooltip
-    const tooltip = d3.select(containerRef.current).select('.scatter-tooltip');
-
-    points
+      })
       .on('mouseenter', (event, d) => {
         const risk = d.riskProb >= 0.7 ? 'High' : d.riskProb >= 0.4 ? 'Moderate' : 'Low';
         tooltip
@@ -143,29 +167,6 @@ export default function PopulationScatter() {
           `);
       })
       .on('mouseleave', () => tooltip.style('opacity', 0));
-
-    // Brush for lasso selection
-    const brush = d3.brush()
-      .extent([[0, 0], [innerW, innerH]])
-      .on('end', (event) => {
-        if (!event.selection) {
-          brushPatients([]);
-          return;
-        }
-        const [[x0, y0], [x1, y1]] = event.selection;
-        const ids = allPatients
-          .filter(d => {
-            const px = xScale(d.umapX);
-            const py = yScale(d.umapY);
-            return px >= x0 && px <= x1 && py >= y0 && py <= y1;
-          })
-          .map(d => d.id);
-        brushPatients(ids);
-      });
-
-    g.append('g')
-      .attr('class', 'brush')
-      .call(brush);
 
   }, [dims, allPatients, selectedPatientIds, activePatient, colorMode, activeFeature, featureAbsShapExtent, riskColorScale, brushPatients, selectPatient]);
 

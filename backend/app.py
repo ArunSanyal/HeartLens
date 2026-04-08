@@ -405,57 +405,161 @@ def _template_chat(message, patient):
     """Fallback template-based chat responses."""
     q = message.lower()
 
-    if patient and ("why" in q or "explain" in q or "risk" in q):
-        top = sorted(patient["shapValues"].items(), key=lambda x: abs(x[1]), reverse=True)[:3]
-        drivers = ", ".join(f"**{FEATURE_LABELS[f]}** (SHAP: {v:+.4f})" for f, v in top)
+    # Patient-specific questions (requires a selected patient)
+    if patient and any(w in q for w in ["why", "explain", "risk", "this patient", "their", "diagnosis"]):
+        top = sorted(patient["shapValues"].items(), key=lambda x: abs(x[1]), reverse=True)[:5]
+        drivers = [f for f, v in top if v > 0]
+        protectors = [f for f, v in top if v < 0]
         risk_pct = patient["riskProb"] * 100
-        return (
-            f"Patient #{patient['id']} has a predicted risk of **{risk_pct:.0f}%**. "
-            f"The top contributing features are: {drivers}."
-        )
+        risk_label = "high" if risk_pct >= 70 else "moderate" if risk_pct >= 40 else "low"
+        f = patient["features"]
+        sex = "male" if f["sex"] == 1 else "female"
 
-    if "highest" in q or "most at risk" in q:
-        top3 = sorted(PATIENTS, key=lambda p: p["riskProb"], reverse=True)[:3]
-        lines = [f"{i+1}. **Patient #{p['id']}** ({p['site']}) — {p['riskProb']*100:.0f}% risk"
-                 for i, p in enumerate(top3)]
-        return "The highest-risk patients are:\n" + "\n".join(lines)
+        resp = f"**Patient #{patient['id']}** is a {int(f['age'])}-year-old {sex} from {patient['site']} with a **{risk_label} risk** prediction of **{risk_pct:.0f}%**.\n\n"
+        if drivers:
+            resp += "**Risk drivers:**\n"
+            for feat in drivers:
+                v = patient["shapValues"][feat]
+                resp += f"- {FEATURE_LABELS[feat]}: {v:+.4f} SHAP impact\n"
+        if protectors:
+            resp += "\n**Protective factors:**\n"
+            for feat in protectors:
+                v = patient["shapValues"][feat]
+                resp += f"- {FEATURE_LABELS[feat]}: {v:+.4f} SHAP impact\n"
+        return resp
 
-    if "how many" in q or "count" in q:
+    # No patient selected but asking about a patient
+    if not patient and any(w in q for w in ["this patient", "why is", "their risk"]):
+        return "No patient is currently selected. Click on a patient in the **Population Overview** scatter plot first, then ask me about their risk factors."
+
+    # Number / count / total / selected questions
+    if any(w in q for w in ["how many", "count", "number", "total", "selected", "patients"]):
         high = sum(1 for p in PATIENTS if p["riskProb"] >= 0.7)
         mod = sum(1 for p in PATIENTS if 0.4 <= p["riskProb"] < 0.7)
         low = sum(1 for p in PATIENTS if p["riskProb"] < 0.4)
-        return (
-            f"Across all **{len(PATIENTS)} patients**:\n"
-            f"- **High risk** (>70%): {high}\n"
-            f"- **Moderate** (40-70%): {mod}\n"
-            f"- **Low risk** (<40%): {low}"
-        )
+        disease = sum(1 for p in PATIENTS if p["target"] == 1)
+        no_disease = sum(1 for p in PATIENTS if p["target"] == 0)
+        sites = {}
+        for p in PATIENTS:
+            sites.setdefault(p["site"], []).append(p)
 
-    if "compare" in q or "site" in q or "hospital" in q:
+        resp = f"The dataset contains **{len(PATIENTS)} patients** total.\n\n"
+        resp += "**By risk level:**\n"
+        resp += f"- High risk (>70%): **{high}** patients\n"
+        resp += f"- Moderate (40-70%): **{mod}** patients\n"
+        resp += f"- Low risk (<40%): **{low}** patients\n\n"
+        resp += "**By diagnosis:**\n"
+        resp += f"- Disease present: **{disease}** patients\n"
+        resp += f"- No disease: **{no_disease}** patients\n\n"
+        resp += "**By hospital site:**\n"
+        for s, pts in sites.items():
+            resp += f"- {s}: **{len(pts)}** patients\n"
+
+        if patient:
+            resp += f"\nCurrently viewing **Patient #{patient['id']}** ({patient['site']})."
+        return resp
+
+    # Highest/lowest risk
+    if any(w in q for w in ["highest", "most at risk", "top risk", "riskiest", "worst"]):
+        top5 = sorted(PATIENTS, key=lambda p: p["riskProb"], reverse=True)[:5]
+        lines = [f"{i+1}. **Patient #{p['id']}** ({p['site']}) — {p['riskProb']*100:.0f}% risk, age {int(p['features']['age'])}"
+                 for i, p in enumerate(top5)]
+        return "**Highest-risk patients:**\n" + "\n".join(lines) + "\n\nClick on them in the scatter plot to see their SHAP explanations."
+
+    if any(w in q for w in ["lowest", "safest", "least risk", "healthiest"]):
+        bottom5 = sorted(PATIENTS, key=lambda p: p["riskProb"])[:5]
+        lines = [f"{i+1}. **Patient #{p['id']}** ({p['site']}) — {p['riskProb']*100:.0f}% risk, age {int(p['features']['age'])}"
+                 for i, p in enumerate(bottom5)]
+        return "**Lowest-risk patients:**\n" + "\n".join(lines)
+
+    # Compare sites / hospitals
+    if any(w in q for w in ["compare", "site", "hospital", "cleveland", "hungary", "switzerland", "long beach"]):
         sites = {}
         for p in PATIENTS:
             sites.setdefault(p["site"], []).append(p["riskProb"])
-        lines = [f"- **{s}**: {len(r)} patients, avg risk {sum(r)/len(r)*100:.1f}%"
-                 for s, r in sites.items()]
-        return "Breakdown by hospital site:\n" + "\n".join(lines)
+        lines = []
+        for s, risks in sites.items():
+            avg = sum(risks) / len(risks) * 100
+            high = sum(1 for r in risks if r >= 0.7)
+            lines.append(f"- **{s}**: {len(risks)} patients, avg risk {avg:.1f}%, {high} high-risk")
+        return "**Breakdown by hospital site:**\n" + "\n".join(lines) + "\n\nSwitch the scatter plot color to **Hospital Site** mode to compare visually."
 
-    if "feature" in q or "important" in q or "shap" in q:
+    # Feature importance
+    if any(w in q for w in ["feature", "important", "shap", "predictor", "variable", "attribute"]):
         importance = {}
         for f in RAW_FEATURES:
             importance[f] = sum(abs(p["shapValues"][f]) for p in PATIENTS) / len(PATIENTS)
         top5 = sorted(importance.items(), key=lambda x: x[1], reverse=True)[:5]
-        lines = [f"{i+1}. **{FEATURE_LABELS[f]}** (mean |SHAP|: {v:.4f})"
+        lines = [f"{i+1}. **{FEATURE_LABELS[f]}** — mean |SHAP|: {v:.4f}"
                  for i, (f, v) in enumerate(top5)]
-        return "Most impactful features:\n" + "\n".join(lines)
+        return "**Most impactful features (global):**\n" + "\n".join(lines) + "\n\nClick on a feature in the beeswarm plot to highlight patients where it has high impact."
 
-    ctx = f" Currently viewing **Patient #{patient['id']}**." if patient else ""
+    # What-if / cholesterol / change
+    if any(w in q for w in ["what if", "what-if", "change", "modify", "cholesterol", "lower", "reduce"]):
+        if patient:
+            return f"You can modify **Patient #{patient['id']}'s** features using the **What-If Editor** in the Patient Detail panel. Click \"What-If Editor\", adjust values (e.g. lower cholesterol), and watch the SHAP waterfall update in real time."
+        return "Select a patient first, then use the **What-If Editor** in the Patient Detail panel to modify feature values and see how the prediction changes."
+
+    # Age-related
+    if "age" in q or "old" in q or "young" in q:
+        ages = [p["features"]["age"] for p in PATIENTS]
+        avg_age = sum(ages) / len(ages)
+        old_high = sum(1 for p in PATIENTS if p["features"]["age"] >= 60 and p["riskProb"] >= 0.7)
+        young_high = sum(1 for p in PATIENTS if p["features"]["age"] < 45 and p["riskProb"] >= 0.7)
+        return (
+            f"**Age statistics:**\n"
+            f"- Age range: {int(min(ages))} to {int(max(ages))} years\n"
+            f"- Average age: {avg_age:.1f} years\n"
+            f"- High-risk patients aged 60+: **{old_high}**\n"
+            f"- High-risk patients under 45: **{young_high}**\n\n"
+            f"Age contributes to risk through SHAP — older patients generally have higher positive SHAP values for age."
+        )
+
+    # Average / mean / statistics
+    if any(w in q for w in ["average", "mean", "median", "statistic", "summary", "overview"]):
+        avg_risk = sum(p["riskProb"] for p in PATIENTS) / len(PATIENTS) * 100
+        avg_age = sum(p["features"]["age"] for p in PATIENTS) / len(PATIENTS)
+        avg_chol = sum(p["features"]["chol"] for p in PATIENTS) / len(PATIENTS)
+        avg_bp = sum(p["features"]["trestbps"] for p in PATIENTS) / len(PATIENTS)
+        male_pct = sum(1 for p in PATIENTS if p["features"]["sex"] == 1) / len(PATIENTS) * 100
+        return (
+            f"**Dataset summary ({len(PATIENTS)} patients):**\n"
+            f"- Average risk: **{avg_risk:.1f}%**\n"
+            f"- Average age: **{avg_age:.1f}** years\n"
+            f"- Average cholesterol: **{avg_chol:.0f}** mg/dl\n"
+            f"- Average resting BP: **{avg_bp:.0f}** mmHg\n"
+            f"- Male patients: **{male_pct:.0f}%**\n"
+            f"- Disease prevalence: **{sum(1 for p in PATIENTS if p['target']==1)/len(PATIENTS)*100:.0f}%**"
+        )
+
+    # Greeting
+    if any(w in q for w in ["hello", "hi", "hey", "help", "what can you"]):
+        ctx = f" Currently viewing **Patient #{patient['id']}** — ask me about their risk." if patient else ""
+        return (
+            "Hello! I'm the HeartLens clinical assistant. I can help you explore the heart disease prediction data. Try asking:\n\n"
+            "- **\"How many patients are in the dataset?\"**\n"
+            "- **\"Which patients are most at risk?\"**\n"
+            "- **\"Compare hospital sites\"**\n"
+            "- **\"What are the most important features?\"**\n"
+            "- **\"What's the average risk?\"**\n"
+            "- Select a patient, then ask **\"Why is this patient high risk?\"**" + ctx
+        )
+
+    # Default — try to give something useful rather than just help text
+    ctx = ""
+    if patient:
+        risk_pct = patient["riskProb"] * 100
+        ctx = f"\n\nYou have **Patient #{patient['id']}** selected ({patient['site']}, {risk_pct:.0f}% risk). Try asking about their specific risk factors."
+    else:
+        ctx = "\n\nTip: Select a patient from the scatter plot to ask patient-specific questions."
+
     return (
-        "I can help explore the heart disease prediction data. Try:\n"
-        "- \"Why is this patient high risk?\"\n"
-        "- \"Which patients are most at risk?\"\n"
-        "- \"Compare hospital sites\"\n"
-        "- \"What are the most important features?\"\n"
-        "- \"How many patients are high risk?\"" + ctx
+        f"I'm not sure how to answer \"{message}\" specifically, but here's what I can help with:\n\n"
+        "- **Patient counts & stats**: \"How many patients?\", \"What's the average risk?\"\n"
+        "- **Risk analysis**: \"Who are the highest risk patients?\"\n"
+        "- **Site comparison**: \"Compare hospital sites\"\n"
+        "- **Feature analysis**: \"What features matter most?\"\n"
+        "- **Patient details**: Select a patient, then \"Why is this patient high risk?\"" + ctx
     )
 
 
