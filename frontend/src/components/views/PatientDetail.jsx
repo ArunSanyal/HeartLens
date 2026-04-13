@@ -5,7 +5,7 @@ import { FEATURE_LABELS, FEATURE_DESCRIPTIONS } from '../../data/mockData';
 import { predictWhatIf } from '../../api';
 import './PatientDetail.css';
 
-const MARGIN = { top: 20, right: 20, bottom: 30, left: 140 };
+const MARGIN = { top: 38, right: 62, bottom: 46, left: 170 };
 
 export default function PatientDetail() {
   const waterfallRef = useRef(null);
@@ -77,7 +77,7 @@ export default function PatientDetail() {
     const svg = d3.select(waterfallRef.current);
     svg.selectAll('*').remove();
 
-    const chartHeight = Math.max(dims.height * 0.55, 200);
+    const chartHeight = Math.max(dims.height * 0.62, 230);
     const innerW = dims.width - MARGIN.left - MARGIN.right;
     const innerH = chartHeight - MARGIN.top - MARGIN.bottom;
     if (innerW <= 0 || innerH <= 0) return;
@@ -88,7 +88,8 @@ export default function PatientDetail() {
       .attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
 
     const base = activePatient.baseValue;
-    const items = sortedShap.map(([f, v]) => ({ feature: f, value: v }));
+    // Show only top 8 by |SHAP| — keeps the chart readable without crowding
+    const items = sortedShap.slice(0, 8).map(([f, v]) => ({ feature: f, value: v }));
 
     // Build cumulative waterfall
     let cumulative = base;
@@ -112,16 +113,16 @@ export default function PatientDetail() {
     // Base value line
     g.append('line')
       .attr('x1', xScale(base)).attr('x2', xScale(base))
-      .attr('y1', -5).attr('y2', innerH + 5)
+      .attr('y1', -28).attr('y2', innerH + 5)
       .attr('stroke', '#94a3b8')
       .attr('stroke-dasharray', '4 3')
       .attr('stroke-width', 1);
 
     g.append('text')
-      .attr('x', xScale(base)).attr('y', -8)
+      .attr('x', xScale(base)).attr('y', -32)
       .attr('text-anchor', 'middle')
       .attr('fill', '#94a3b8').attr('font-size', '9px')
-      .text(`Base: ${base.toFixed(2)}`);
+      .text('Average patient');
 
     // Bars
     bars.forEach(bar => {
@@ -138,15 +139,15 @@ export default function PatientDetail() {
         .attr('fill', isPositive ? '#ef4444' : '#3b82f6')
         .attr('opacity', 0.8);
 
-      // Value label
+      // Direction label — plain word instead of raw score
       g.append('text')
         .attr('x', xScale(bar.end) + (isPositive ? 4 : -4))
         .attr('y', yScale(bar.feature) + yScale.bandwidth() / 2 + 3)
         .attr('text-anchor', isPositive ? 'start' : 'end')
-        .attr('fill', '#475569')
+        .attr('fill', isPositive ? '#ef4444' : '#3b82f6')
         .attr('font-size', '9px')
         .attr('font-weight', '500')
-        .text((isPositive ? '+' : '') + bar.value.toFixed(3));
+        .text(isPositive ? '▲ risk' : '▼ risk');
 
       // Connector lines
       if (bars.indexOf(bar) < bars.length - 1) {
@@ -161,25 +162,37 @@ export default function PatientDetail() {
       }
     });
 
-    // Final prediction line
+    // Final prediction line — coloured by risk level so it's clear what it means
+    const predColor = cumulative >= 0.7 ? '#ef4444' : cumulative >= 0.4 ? '#f59e0b' : '#22c55e';
+    const riskWord  = cumulative >= 0.7 ? 'High risk' : cumulative >= 0.4 ? 'Moderate risk' : 'Low risk';
+
     g.append('line')
       .attr('x1', xScale(cumulative)).attr('x2', xScale(cumulative))
-      .attr('y1', -5).attr('y2', innerH + 5)
-      .attr('stroke', '#1e293b')
-      .attr('stroke-width', 1.5);
+      .attr('y1', -28).attr('y2', innerH + 5)
+      .attr('stroke', predColor)
+      .attr('stroke-width', 2);
 
+    // Label at TOP of line — "This patient's risk"
     g.append('text')
-      .attr('x', xScale(cumulative)).attr('y', innerH + 18)
+      .attr('x', xScale(cumulative)).attr('y', -22)
       .attr('text-anchor', 'middle')
-      .attr('fill', '#1e293b').attr('font-size', '10px').attr('font-weight', '600')
-      .text(`Prediction: ${cumulative.toFixed(2)}`);
+      .attr('fill', predColor).attr('font-size', '9px').attr('font-weight', '600')
+      .text("This patient's risk");
+
+    // Label at BOTTOM — risk word
+    g.append('text')
+      .attr('x', xScale(cumulative)).attr('y', innerH + 32)
+      .attr('text-anchor', 'middle')
+      .attr('fill', predColor)
+      .attr('font-size', '10px').attr('font-weight', '700')
+      .text(`→ ${riskWord}`);
 
     // Y axis
     g.append('g')
       .call(d3.axisLeft(yScale).tickFormat(f => FEATURE_LABELS[f] || f))
       .call(g => g.select('.domain').remove())
       .call(g => g.selectAll('.tick line').remove())
-      .call(g => g.selectAll('.tick text').attr('fill', '#475569').attr('font-size', '10px'));
+      .call(g => g.selectAll('.tick text').attr('fill', '#475569').attr('font-size', '9.5px'));
 
     // X axis
     g.append('g')
@@ -232,6 +245,15 @@ export default function PatientDetail() {
         {/* Waterfall chart */}
         <div className="detail-waterfall">
           <svg ref={waterfallRef} width={dims.width} />
+        </div>
+
+        {/* One-sentence plain-English risk summary */}
+        <div className="detail-risk-sentence" style={{ color: riskColor }}>
+          {activePatient.riskProb >= 0.7
+            ? '● This patient shows strong signs of heart disease risk.'
+            : activePatient.riskProb >= 0.4
+            ? '● This patient shows some warning signs worth monitoring.'
+            : '● This patient appears to be at low risk.'}
         </div>
 
         {/* LLM Narrative */}

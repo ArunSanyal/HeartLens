@@ -4,13 +4,14 @@ import { usePatients } from '../../context/PatientContext';
 import { FEATURES, FEATURE_LABELS, getGlobalFeatureImportance } from '../../data/mockData';
 import './FeatureImportance.css';
 
-const MARGIN = { top: 10, right: 30, bottom: 30, left: 130 };
+const MARGIN = { top: 16, right: 56, bottom: 40, left: 172 };
 
 export default function FeatureImportance() {
-  const svgRef = useRef(null);
-  const containerRef = useRef(null);
+  const svgRef        = useRef(null);
+  const containerRef  = useRef(null);
+  const tooltipRef    = useRef(null);
   const [dims, setDims] = useState({ width: 500, height: 350 });
-  const { selectedPatients, activeFeature, setActiveFeature, allPatients } = usePatients();
+  const { selectedPatients, activeFeature, setActiveFeature } = usePatients();
 
   useEffect(() => {
     const observer = new ResizeObserver(entries => {
@@ -23,16 +24,26 @@ export default function FeatureImportance() {
     return () => observer.disconnect();
   }, []);
 
-  // Sort features by global importance
-  const sortedFeatures = useMemo(() => {
-    return getGlobalFeatureImportance(selectedPatients).map(d => d.feature);
+  // Sort features by |mean SHAP| descending, cap at 10 to avoid label crowding
+  const sortedFeatures = useMemo(
+    () => getGlobalFeatureImportance(selectedPatients).map(d => d.feature).slice(0, 10),
+    [selectedPatients]
+  );
+
+  // Pre-compute mean SHAP per feature
+  const meanShap = useMemo(() => {
+    const out = {};
+    FEATURES.forEach(f => {
+      out[f] = d3.mean(selectedPatients, p => p.shapValues[f]) ?? 0;
+    });
+    return out;
   }, [selectedPatients]);
 
   useEffect(() => {
     if (!svgRef.current) return;
     const { width, height } = dims;
-    const innerW = width - MARGIN.left - MARGIN.right;
-    const innerH = height - MARGIN.top - MARGIN.bottom;
+    const innerW = width  - MARGIN.left - MARGIN.right;
+    const innerH = height - MARGIN.top  - MARGIN.bottom;
     if (innerW <= 0 || innerH <= 0) return;
 
     const svg = d3.select(svgRef.current);
@@ -41,176 +52,160 @@ export default function FeatureImportance() {
     const g = svg.append('g')
       .attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
 
-    // Collect all SHAP values for beeswarm
-    const shapExtent = d3.extent(
-      selectedPatients.flatMap(p => FEATURES.map(f => p.shapValues[f]))
-    );
-    const xMax = Math.max(Math.abs(shapExtent[0]), Math.abs(shapExtent[1]));
+    // ── Scales ────────────────────────────────────────────────────────────────
+    const absMax = d3.max(sortedFeatures, f => Math.abs(meanShap[f])) || 1;
 
     const xScale = d3.scaleLinear()
-      .domain([-xMax, xMax])
-      .range([0, innerW])
-      .nice();
+      .domain([-absMax * 1.15, absMax * 1.15])
+      .range([0, innerW]);
 
     const yScale = d3.scaleBand()
       .domain(sortedFeatures)
       .range([0, innerH])
-      .padding(0.15);
+      .padding(0.22);
 
-    // Feature value color scale (low=blue, high=red) for beeswarm
-    const featureScales = {};
-    sortedFeatures.forEach(f => {
-      const extent = d3.extent(selectedPatients, p => p.features[f]);
-      featureScales[f] = d3.scaleSequential(d3.interpolateRdBu)
-        .domain([extent[1], extent[0]]); // reversed so high=red
+    const barH = yScale.bandwidth();
+
+    // ── Light grid lines ──────────────────────────────────────────────────────
+    const ticks = xScale.ticks(6);
+    ticks.forEach(t => {
+      g.append('line')
+        .attr('x1', xScale(t)).attr('x2', xScale(t))
+        .attr('y1', 0).attr('y2', innerH)
+        .attr('stroke', '#f1f5f9').attr('stroke-width', 1);
     });
 
-    // Zero line
+    // ── Zero line ─────────────────────────────────────────────────────────────
     g.append('line')
       .attr('x1', xScale(0)).attr('x2', xScale(0))
-      .attr('y1', 0).attr('y2', innerH)
-      .attr('stroke', '#cbd5e1')
-      .attr('stroke-dasharray', '3 3');
+      .attr('y1', -6).attr('y2', innerH)
+      .attr('stroke', '#94a3b8').attr('stroke-width', 1.5);
 
-    // X axis
+    // ── X axis ────────────────────────────────────────────────────────────────
     g.append('g')
       .attr('transform', `translate(0,${innerH})`)
       .call(d3.axisBottom(xScale).ticks(6).tickFormat(d3.format('.2f')))
-      .call(g => g.select('.domain').attr('stroke', '#cbd5e1'))
-      .call(g => g.selectAll('.tick line').attr('stroke', '#e2e8f0'))
-      .call(g => g.selectAll('.tick text').attr('fill', '#94a3b8').attr('font-size', '10px'));
+      .call(gg => gg.select('.domain').attr('stroke', '#e2e8f0'))
+      .call(gg => gg.selectAll('.tick line').remove())
+      .call(gg => gg.selectAll('.tick text')
+        .attr('fill', '#94a3b8').attr('font-size', '10px'));
 
     g.append('text')
-      .attr('x', innerW / 2).attr('y', innerH + 26)
+      .attr('x', innerW / 2).attr('y', innerH + 34)
       .attr('text-anchor', 'middle')
       .attr('fill', '#94a3b8').attr('font-size', '10px')
-      .text('SHAP value (impact on prediction)');
+      .text('Average impact on heart disease risk  (← reduces risk   |   increases risk →)');
 
-    // Y axis (feature labels)
-    const yAxis = g.append('g')
+    // ── Y axis ────────────────────────────────────────────────────────────────
+    g.append('g')
       .call(d3.axisLeft(yScale).tickFormat(f => FEATURE_LABELS[f] || f))
-      .call(g => g.select('.domain').remove())
-      .call(g => g.selectAll('.tick line').remove())
-      .call(g => g.selectAll('.tick text')
+      .call(gg => gg.select('.domain').remove())
+      .call(gg => gg.selectAll('.tick line').remove())
+      .call(gg => gg.selectAll('.tick text')
         .attr('fill', d => d === activeFeature ? '#3b82f6' : '#475569')
-        .attr('font-size', '11px')
-        .attr('font-weight', d => d === activeFeature ? '600' : '400')
+        .attr('font-size', '10px')
+        .attr('font-weight', d => d === activeFeature ? '700' : '400')
         .style('cursor', 'pointer')
-        .on('click', (event, f) => {
-          setActiveFeature(activeFeature === f ? null : f);
-        })
+        .on('click', (_, f) => setActiveFeature(activeFeature === f ? null : f))
       );
 
-    // Beeswarm dots - sample for performance
-    const sampleSize = Math.min(selectedPatients.length, 150);
-    const step = Math.max(1, Math.floor(selectedPatients.length / sampleSize));
-    const sampled = selectedPatients.filter((_, i) => i % step === 0);
-
-    const dotR = 2.2;
-
-    // Clip group to prevent overflow between rows
-    const clipId = 'beeswarm-clip';
-    const defs0 = g.append('defs');
-    defs0.append('clipPath').attr('id', clipId)
-      .append('rect')
-      .attr('x', 0).attr('y', 0)
-      .attr('width', innerW).attr('height', innerH);
-
-    const dotsGroup = g.append('g').attr('clip-path', `url(#${clipId})`);
-
+    // ── Bars ──────────────────────────────────────────────────────────────────
     sortedFeatures.forEach(feature => {
-      const bandY = yScale(feature);
-      const bandH = yScale.bandwidth();
-      const bandCenter = bandY + bandH / 2;
-      const maxYOffset = bandH / 2 - dotR; // clamp within band
+      const val      = meanShap[feature];
+      const positive = val >= 0;
+      const color    = positive ? '#ef4444' : '#3b82f6';
+      const isActive = feature === activeFeature;
 
-      const dots = sampled.map(p => ({
-        x: xScale(p.shapValues[feature]),
-        shap: p.shapValues[feature],
-        featureVal: p.features[feature],
-        patientId: p.id,
-      }));
+      const barX = positive ? xScale(0) : xScale(val);
+      const barW = Math.max(2, Math.abs(xScale(val) - xScale(0)));
+      const barY = yScale(feature);
 
-      // Sort by x for left-to-right placement
-      dots.sort((a, b) => a.x - b.x);
+      // Subtle active-row highlight
+      if (isActive) {
+        g.append('rect')
+          .attr('x', 0).attr('y', barY - yScale.step() * 0.14)
+          .attr('width', innerW)
+          .attr('height', yScale.step() * 1.28)
+          .attr('fill', 'rgba(59,130,246,0.06)')
+          .attr('rx', 4);
+      }
 
-      // Collision-aware placement, clamped to band
-      const placed = [];
-      dots.forEach(dot => {
-        let bestY = bandCenter;
-        let yOff = 0;
-        let dir = 1;
-
-        for (let attempt = 0; attempt < 15; attempt++) {
-          const testY = bandCenter + yOff;
-          const collision = placed.some(p =>
-            Math.abs(p.x - dot.x) < dotR * 2.2 && Math.abs(p.y - testY) < dotR * 2.2
-          );
-          if (!collision) {
-            bestY = testY;
-            break;
-          }
-          yOff = dir * (Math.abs(yOff) + dotR * 2);
-          dir *= -1;
-
-          // Stop if we've hit band edges
-          if (Math.abs(yOff) > maxYOffset) break;
-        }
-
-        // Clamp to band boundaries
-        const clampedY = Math.max(bandY + dotR, Math.min(bandY + bandH - dotR, bestY));
-        dot.y = clampedY;
-        placed.push({ x: dot.x, y: clampedY });
-      });
-
-      // Draw dots within clipped group
-      dotsGroup.selectAll(null)
-        .data(dots)
-        .enter()
-        .append('circle')
-        .attr('cx', d => d.x)
-        .attr('cy', d => d.y)
-        .attr('r', dotR)
-        .attr('fill', d => featureScales[feature](d.featureVal))
-        .attr('opacity', feature === activeFeature ? 0.9 : 0.6)
-        .attr('stroke', feature === activeFeature ? '#1e293b' : 'none')
-        .attr('stroke-width', feature === activeFeature ? 0.5 : 0);
-
-      // Clickable row overlay
+      // Bar
       g.append('rect')
-        .attr('x', 0)
-        .attr('y', bandY)
-        .attr('width', innerW)
-        .attr('height', bandH)
-        .attr('fill', feature === activeFeature ? 'rgba(59,130,246,0.04)' : 'transparent')
+        .attr('x', barX)
+        .attr('y', barY)
+        .attr('width', barW)
+        .attr('height', barH)
+        .attr('fill', color)
+        .attr('rx', 3)
+        .attr('opacity', isActive ? 1 : 0.72);
+
+      // Value label at bar tip
+      const labelX = positive
+        ? xScale(val) + 5
+        : xScale(val) - 5;
+      const anchor = positive ? 'start' : 'end';
+
+      g.append('text')
+        .attr('x', labelX)
+        .attr('y', barY + barH / 2 + 3.5)
+        .attr('text-anchor', anchor)
+        .attr('fill', '#64748b')
+        .attr('font-size', '9px')
+        .text((val >= 0 ? '+' : '') + val.toFixed(3));
+
+      // Invisible wide hit-target for tooltip/click
+      g.append('rect')
+        .attr('x', 0).attr('y', barY)
+        .attr('width', innerW).attr('height', barH)
+        .attr('fill', 'transparent')
         .style('cursor', 'pointer')
-        .on('click', () => setActiveFeature(activeFeature === feature ? null : feature));
+        .on('click', () => setActiveFeature(activeFeature === feature ? null : feature))
+        .on('mouseover', function (event) {
+          const direction = val >= 0 ? 'increases risk' : 'reduces risk';
+          d3.select(tooltipRef.current)
+            .style('display', 'block')
+            .html(
+              `<strong>${FEATURE_LABELS[feature] || feature}</strong><br/>` +
+              `Average impact: <span style="color:${color}">${val >= 0 ? '+' : ''}${val.toFixed(3)}</span><br/>` +
+              `<span style="opacity:0.7">${direction} on average</span>`
+            );
+        })
+        .on('mousemove', function (event) {
+          const rect = containerRef.current.getBoundingClientRect();
+          d3.select(tooltipRef.current)
+            .style('left', (event.clientX - rect.left + 14) + 'px')
+            .style('top',  (event.clientY - rect.top  - 42) + 'px');
+        })
+        .on('mouseout', () =>
+          d3.select(tooltipRef.current).style('display', 'none')
+        );
     });
 
-    // Color legend
-    const legendW = 100;
-    const legendH = 8;
+    // ── Legend ────────────────────────────────────────────────────────────────
     const legendG = svg.append('g')
-      .attr('transform', `translate(${width - legendW - 30},${4})`);
+      .attr('transform', `translate(${MARGIN.left + innerW / 2 - 90}, 2)`);
 
-    const defs = svg.append('defs');
-    const grad = defs.append('linearGradient').attr('id', 'bee-grad');
-    grad.append('stop').attr('offset', '0%').attr('stop-color', '#2563eb');
-    grad.append('stop').attr('offset', '100%').attr('stop-color', '#ef4444');
+    [
+      { color: '#ef4444', label: 'Increases risk' },
+      { color: '#3b82f6', label: 'Reduces risk',  dx: 110 },
+    ].forEach(({ color, label, dx = 0 }) => {
+      legendG.append('rect')
+        .attr('x', dx).attr('y', 0)
+        .attr('width', 10).attr('height', 10)
+        .attr('fill', color).attr('rx', 2).attr('opacity', 0.75);
+      legendG.append('text')
+        .attr('x', dx + 14).attr('y', 8.5)
+        .attr('fill', '#64748b').attr('font-size', '10px')
+        .text(label);
+    });
 
-    legendG.append('rect')
-      .attr('width', legendW).attr('height', legendH)
-      .attr('rx', 4)
-      .attr('fill', 'url(#bee-grad)');
-    legendG.append('text').attr('y', -3).attr('fill', '#94a3b8').attr('font-size', '9px').text('Low');
-    legendG.append('text').attr('x', legendW).attr('y', -3).attr('text-anchor', 'end').attr('fill', '#94a3b8').attr('font-size', '9px').text('High');
-    legendG.append('text').attr('x', legendW / 2).attr('y', -3).attr('text-anchor', 'middle').attr('fill', '#94a3b8').attr('font-size', '9px').text('Feature value');
-
-  }, [dims, selectedPatients, sortedFeatures, activeFeature, setActiveFeature]);
+  }, [dims, selectedPatients, sortedFeatures, meanShap, activeFeature, setActiveFeature]);
 
   return (
     <div className="beeswarm-container" ref={containerRef}>
       <svg ref={svgRef} width={dims.width} height={dims.height} />
+      <div ref={tooltipRef} className="fi-tooltip" />
     </div>
   );
 }

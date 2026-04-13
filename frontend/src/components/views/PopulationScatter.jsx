@@ -1,13 +1,13 @@
 import { useRef, useEffect, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { usePatients } from '../../context/PatientContext';
-import { SITES } from '../../data/mockData';
+import { SITES, FEATURE_LABELS } from '../../data/mockData';
 import './PopulationScatter.css';
 
 const RISK_COLORS = ['#22c55e', '#84cc16', '#eab308', '#f97316', '#ef4444'];
 const SITE_COLORS = { Cleveland: '#3b82f6', Hungary: '#8b5cf6', Switzerland: '#f59e0b', 'VA Long Beach': '#10b981' };
 
-const MARGIN = { top: 20, right: 20, bottom: 40, left: 50 };
+const MARGIN = { top: 24, right: 16, bottom: 36, left: 12 };
 
 export default function PopulationScatter() {
   const svgRef = useRef(null);
@@ -60,33 +60,86 @@ export default function PopulationScatter() {
     const g = svg.append('g')
       .attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
 
-    // Axes
-    g.append('g')
-      .attr('transform', `translate(0,${innerH})`)
-      .call(d3.axisBottom(xScale).ticks(6))
-      .call(g => g.select('.domain').attr('stroke', '#cbd5e1'))
-      .call(g => g.selectAll('.tick line').attr('stroke', '#e2e8f0'))
-      .call(g => g.selectAll('.tick text').attr('fill', '#94a3b8').attr('font-size', '10px'));
+    // Subtle background grid only — no axis numbers (UMAP coords are meaningless)
+    const xTicks = xScale.ticks(5);
+    const yTicks = yScale.ticks(5);
+    xTicks.forEach(t => {
+      g.append('line')
+        .attr('x1', xScale(t)).attr('x2', xScale(t))
+        .attr('y1', 0).attr('y2', innerH)
+        .attr('stroke', '#f1f5f9').attr('stroke-width', 1);
+    });
+    yTicks.forEach(t => {
+      g.append('line')
+        .attr('x1', 0).attr('x2', innerW)
+        .attr('y1', yScale(t)).attr('y2', yScale(t))
+        .attr('stroke', '#f1f5f9').attr('stroke-width', 1);
+    });
 
-    g.append('g')
-      .call(d3.axisLeft(yScale).ticks(6))
-      .call(g => g.select('.domain').attr('stroke', '#cbd5e1'))
-      .call(g => g.selectAll('.tick line').attr('stroke', '#e2e8f0'))
-      .call(g => g.selectAll('.tick text').attr('fill', '#94a3b8').attr('font-size', '10px'));
+    // ── Cluster zone annotations (risk mode only) ─────────────────────────
+    if (colorMode === 'risk') {
+      const groups = {
+        high:     { patients: allPatients.filter(p => p.riskProb >= 0.7),  color: '#ef4444', label: 'Higher Risk' },
+        moderate: { patients: allPatients.filter(p => p.riskProb >= 0.4 && p.riskProb < 0.7), color: '#f59e0b', label: 'Moderate Risk' },
+        low:      { patients: allPatients.filter(p => p.riskProb < 0.4),   color: '#22c55e', label: 'Lower Risk' },
+      };
+      Object.values(groups).forEach(({ patients, color, label }) => {
+        if (patients.length < 5) return;
+        const cx = d3.mean(patients, p => xScale(p.umapX));
+        const cy = d3.mean(patients, p => yScale(p.umapY));
+        // Soft pill background
+        const tw = label.length * 6.4 + 16;
+        g.append('rect')
+          .attr('x', cx - tw / 2).attr('y', cy - 18)
+          .attr('width', tw).attr('height', 18)
+          .attr('rx', 9)
+          .attr('fill', color).attr('opacity', 0.12)
+          .attr('pointer-events', 'none');
+        g.append('text')
+          .attr('x', cx).attr('y', cy - 5)
+          .attr('text-anchor', 'middle')
+          .attr('fill', color).attr('opacity', 0.75)
+          .attr('font-size', '10.5px').attr('font-weight', '700')
+          .attr('pointer-events', 'none')
+          .text(label);
+      });
+    }
 
-    // Axis labels
+    // ── Site cluster labels (site mode only) ──────────────────────────────
+    if (colorMode === 'site') {
+      SITES.forEach(site => {
+        const pts = allPatients.filter(p => p.site === site);
+        if (pts.length < 3) return;
+        const cx = d3.mean(pts, p => xScale(p.umapX));
+        const cy = d3.mean(pts, p => yScale(p.umapY));
+        const color = SITE_COLORS[site] || '#94a3b8';
+        const tw = site.length * 6.4 + 16;
+        g.append('rect')
+          .attr('x', cx - tw / 2).attr('y', cy - 18)
+          .attr('width', tw).attr('height', 18)
+          .attr('rx', 9)
+          .attr('fill', color).attr('opacity', 0.12)
+          .attr('pointer-events', 'none');
+        g.append('text')
+          .attr('x', cx).attr('y', cy - 5)
+          .attr('text-anchor', 'middle')
+          .attr('fill', color).attr('opacity', 0.8)
+          .attr('font-size', '10px').attr('font-weight', '700')
+          .attr('pointer-events', 'none')
+          .text(site);
+      });
+    }
+
+    // ── Bottom caption ────────────────────────────────────────────────────
+    const caption = activeFeature
+      ? `Dot size = how strongly "${FEATURE_LABELS[activeFeature] || activeFeature}" affects each patient's risk`
+      : 'Each dot is one patient — patients closer together have more similar health profiles';
+
     g.append('text')
-      .attr('x', innerW / 2).attr('y', innerH + 32)
+      .attr('x', innerW / 2).attr('y', innerH + 26)
       .attr('text-anchor', 'middle')
-      .attr('fill', '#94a3b8').attr('font-size', '11px')
-      .text('UMAP-1');
-
-    g.append('text')
-      .attr('transform', 'rotate(-90)')
-      .attr('x', -innerH / 2).attr('y', -36)
-      .attr('text-anchor', 'middle')
-      .attr('fill', '#94a3b8').attr('font-size', '11px')
-      .text('UMAP-2');
+      .attr('fill', '#94a3b8').attr('font-size', '10px')
+      .text(caption);
 
     const hasBrush = selectedPatientIds.size > 0;
 
@@ -177,13 +230,21 @@ export default function PopulationScatter() {
           className={`scatter-toggle ${colorMode === 'risk' ? 'active' : ''}`}
           onClick={toggleColorMode}
         >
-          {colorMode === 'risk' ? 'Color: Risk Level' : 'Color: Hospital Site'}
+          {colorMode === 'risk' ? 'Colour by Risk' : 'Colour by Hospital'}
         </button>
+
         {colorMode === 'risk' ? (
-          <div className="scatter-legend">
-            <span className="scatter-legend__label">Low</span>
-            <div className="scatter-legend__gradient" />
-            <span className="scatter-legend__label">High</span>
+          <div className="scatter-legend scatter-legend--risk">
+            {[
+              { color: '#22c55e', label: 'Low Risk'      },
+              { color: '#f59e0b', label: 'Moderate Risk' },
+              { color: '#ef4444', label: 'High Risk'     },
+            ].map(({ color, label }) => (
+              <span key={label} className="scatter-legend__pill">
+                <span className="scatter-legend__dot" style={{ background: color }} />
+                {label}
+              </span>
+            ))}
           </div>
         ) : (
           <div className="scatter-legend scatter-legend--sites">

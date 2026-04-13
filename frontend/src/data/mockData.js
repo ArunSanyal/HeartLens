@@ -19,13 +19,13 @@ const FEATURE_LABELS = {
   trestbps: 'Resting Blood Pressure',
   chol: 'Serum Cholesterol',
   fbs: 'Fasting Blood Sugar',
-  restecg: 'Resting ECG',
+  restecg: 'Resting Heart Activity',
   thalach: 'Max Heart Rate',
-  exang: 'Exercise Angina',
-  oldpeak: 'ST Depression (Oldpeak)',
-  slope: 'ST Slope',
-  ca: 'Major Vessels (Ca)',
-  thal: 'Thalassemia'
+  exang: 'Chest Pain on Exertion',
+  oldpeak: 'Heart Signal During Exercise',
+  slope: 'Heart Signal Trend',
+  ca: 'Blocked Heart Vessels',
+  thal: 'Blood Flow Type'
 };
 
 const FEATURE_DESCRIPTIONS = {

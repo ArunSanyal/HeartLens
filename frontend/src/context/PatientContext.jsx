@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
-import { fetchPatients, fetchNarrative } from '../api';
+import { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { fetchPatients, fetchNarrative, sendChat } from '../api';
 
 const PatientContext = createContext(null);
 
@@ -37,6 +37,28 @@ export function PatientProvider({ children }) {
       });
     return () => { cancelled = true; };
   }, []);
+
+  // Auto-send chat summary when a new patient is selected
+  const lastAutoChatId = useRef(null);
+  useEffect(() => {
+    if (!activePatient) return;
+    if (activePatient.id === lastAutoChatId.current) return; // don't re-trigger for same patient
+    lastAutoChatId.current = activePatient.id;
+
+    const sex   = activePatient.features.sex === 1 ? 'Male' : 'Female';
+    const age   = parseInt(activePatient.features.age);
+    const autoMsg = `Tell me about Patient #${activePatient.id} (${sex}, ${age}, ${activePatient.site})`;
+
+    setChatMessages(prev => [...prev, { role: 'user', text: autoMsg }]);
+
+    sendChat('tell about this patient', activePatient.id, [])
+      .then(res => {
+        setChatMessages(prev => [...prev, { role: 'assistant', text: res.response }]);
+      })
+      .catch(() => {
+        // silently ignore — manual chat still works
+      });
+  }, [activePatient]);
 
   // Fetch narrative from API when active patient changes
   useEffect(() => {

@@ -101,6 +101,15 @@
   display: block;
 }
 
+/* One-sentence risk summary */
+.detail-risk-sentence {
+  font-size: 15px;
+  font-weight: 700;
+  padding: 4px 18px 10px;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
 /* Narrative */
 .detail-narrative {
   margin: 4px 16px 12px;

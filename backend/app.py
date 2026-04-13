@@ -265,36 +265,39 @@ def _claude_narrative(patient, api_key):
 
         top_shap = sorted(shap_vals.items(), key=lambda x: abs(x[1]), reverse=True)[:5]
 
-        prompt = f"""You are a clinical AI assistant explaining heart disease risk predictions to clinicians.
+        cp_map = {0: "typical angina", 1: "atypical chest pain", 2: "non-anginal pain", 3: "no chest pain"}
+        ecg_map = {0: "normal", 1: "minor heart electrical changes", 2: "enlarged left heart chamber"}
+        thal_map = {1: "normal", 2: "a fixed blood flow problem", 3: "a stress-induced blood flow problem"}
+        slope_map = {0: "improving", 1: "flat", 2: "worsening"}
 
-A patient has been assessed by an XGBoost classifier trained on the UCI Heart Disease dataset.
-Generate a clear, plain-English clinical narrative explaining the prediction.
+        cp_text = cp_map.get(int(features['cp']), "unknown chest pain type")
+        ecg_text = ecg_map.get(int(features['restecg']), "unknown ECG result")
+        thal_text = thal_map.get(int(features['thal']), "unknown")
+        slope_text = slope_map.get(int(features['slope']), "unknown")
+        risk_label = 'high' if risk >= 0.7 else 'moderate' if risk >= 0.4 else 'low'
+        sex_text = 'male' if features['sex'] == 1 else 'female'
+        drivers = [FEATURE_LABELS[f] for f, v in top_shap if v > 0]
+        protectors = [FEATURE_LABELS[f] for f, v in top_shap if v < 0]
 
-Patient Profile:
-- Age: {features['age']}, Sex: {'Male' if features['sex'] == 1 else 'Female'}
-- Chest Pain Type: {int(features['cp'])} (0=typical angina, 1=atypical, 2=non-anginal, 3=asymptomatic)
-- Resting BP: {features['trestbps']} mmHg, Cholesterol: {features['chol']} mg/dl
-- Fasting Blood Sugar >120: {'Yes' if features['fbs'] == 1 else 'No'}
-- Resting ECG: {int(features['restecg'])} (0=normal, 1=ST-T abnormality, 2=LV hypertrophy)
-- Max Heart Rate: {features['thalach']} bpm
-- Exercise Angina: {'Yes' if features['exang'] == 1 else 'No'}
-- ST Depression (oldpeak): {features['oldpeak']}
-- ST Slope: {int(features['slope'])} (0=upsloping, 1=flat, 2=downsloping)
-- Major Vessels (Ca): {int(features['ca'])}
-- Thalassemia: {int(features['thal'])} (1=normal, 2=fixed defect, 3=reversible defect)
+        prompt = f"""You are explaining a heart disease risk assessment to a patient with no medical background.
 
-Predicted Risk Probability: {risk:.2f} ({'High' if risk >= 0.7 else 'Moderate' if risk >= 0.4 else 'Low'} Risk)
-Base Value: {patient['baseValue']:.4f}
+Patient summary (do NOT repeat these raw values in your response):
+- A {int(features['age'])}-year-old {sex_text}
+- Overall risk level: {risk_label}
+- Chest pain type: {cp_text}
+- Exercise causes chest pain: {'yes' if features['exang'] == 1 else 'no'}
+- Resting ECG result: {ecg_text}
+- Thalassemia result: {thal_text}
+- Heart stress test slope: {slope_text}
+- Number of blocked vessels: {int(features['ca'])}
+- Main warning signs: {', '.join(drivers) if drivers else 'none identified'}
+- Reassuring signs: {', '.join(protectors) if protectors else 'none identified'}
 
-Top SHAP Feature Contributions:
-{chr(10).join(f'  - {FEATURE_LABELS[f]}: {v:+.4f}' for f, v in top_shap)}
-
-Guidelines:
-- Write 3-4 sentences in plain clinical English
-- Reference specific feature values and their SHAP contributions
-- Mention both risk drivers and protective factors
-- Do NOT speculate beyond what the data shows
-- Flag if any data seems unusual"""
+Write 3 short, friendly sentences a non-medical person can fully understand:
+1. Start with the overall risk level in everyday words (e.g. "there is a moderate concern...", NOT "predicted probability: X").
+2. Mention what the main warning signs mean in plain terms (e.g. "blocked arteries", "unusual chest pain") — no numbers, no scores.
+3. Mention what the reassuring signs mean in plain terms — no numbers, no scores.
+Do NOT use any numbers, percentages, medical abbreviations, or technical scores."""
 
         response = client.messages.create(
             model="claude-sonnet-4-20250514",
@@ -315,34 +318,48 @@ def _template_narrative(patient):
     risk = patient["riskProb"]
 
     risk_label = "high" if risk >= 0.7 else "moderate" if risk >= 0.4 else "low"
+    risk_phrase = {
+        "high": "there is a significant concern for heart disease",
+        "moderate": "there is a moderate concern for heart disease",
+        "low": "the risk of heart disease appears to be low",
+    }[risk_label]
+
     sex_text = "male" if f["sex"] == 1 else "female"
+    age = int(f["age"])
 
     top_shap = sorted(s.items(), key=lambda x: abs(x[1]), reverse=True)[:4]
-    drivers = [(k, v) for k, v in top_shap if v > 0]
-    protectors = [(k, v) for k, v in top_shap if v < 0]
+    drivers = [k for k, v in top_shap if v > 0]
+    protectors = [k for k, v in top_shap if v < 0]
+
+    # Human-friendly descriptions for each feature
+    friendly = {
+        "ca":       "blocked blood vessels",
+        "cp":       "the type of chest pain experienced",
+        "thal":     "a blood flow problem detected during stress testing",
+        "oldpeak":  "changes in heart activity during exercise",
+        "thalach":  "the heart rate reached during exercise",
+        "slope":    "how the heart responded under stress",
+        "chol":     "cholesterol levels",
+        "trestbps": "resting blood pressure",
+        "age":      "age",
+        "sex":      "sex",
+        "fbs":      "blood sugar levels",
+        "restecg":  "resting heart electrical activity",
+        "exang":    "chest pain triggered by exercise",
+    }
 
     narrative = (
-        f"This {int(f['age'])}-year-old {sex_text} patient was classified as "
-        f"{risk_label}-risk (predicted probability: {risk:.2f})."
+        f"Based on this assessment, for this {age}-year-old {sex_text}, "
+        f"{risk_phrase}."
     )
 
     if drivers:
-        driver_text = ", ".join(
-            f"{FEATURE_LABELS[k]} (contributing {v:+.3f} to risk)" for k, v in drivers
-        )
-        narrative += f" The primary risk drivers were {driver_text}."
+        driver_text = " and ".join(friendly.get(k, FEATURE_LABELS[k]) for k in drivers[:2])
+        narrative += f" The main warning signs were {driver_text}."
 
     if protectors:
-        protector_text = ", ".join(
-            f"{FEATURE_LABELS[k]} ({v:+.3f})" for k, v in protectors
-        )
-        narrative += f" Protective factors included {protector_text}."
-
-    narrative += (
-        f" The patient's resting blood pressure was {int(f['trestbps'])} mmHg, "
-        f"serum cholesterol {int(f['chol'])} mg/dl, "
-        f"and maximum heart rate achieved was {int(f['thalach'])} bpm."
-    )
+        protector_text = " and ".join(friendly.get(k, FEATURE_LABELS[k]) for k in protectors[:2])
+        narrative += f" On the reassuring side, {protector_text} appeared healthy."
 
     return narrative
 
@@ -362,20 +379,67 @@ def _claude_chat(message, patient, history, api_key):
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
 
-        system_prompt = """You are HeartLens, a clinical AI assistant for a heart disease visual analytics dashboard.
-You help clinicians and researchers understand heart disease predictions from an XGBoost model trained on the UCI Heart Disease dataset (920 patients from 4 hospital sites).
+        # Translate patient data into plain English before injecting into the prompt
+        def _patient_plain(p):
+            f = p["features"]
+            s = p["shapValues"]
+            risk = p["riskProb"]
+            top = sorted(s.items(), key=lambda x: abs(x[1]), reverse=True)[:6]
+            drivers   = [k for k, v in top if v > 0]
+            protectors = [k for k, v in top if v < 0]
+            friendly = {
+                "ca":       "blocked blood vessels in the heart",
+                "cp":       "the type of chest pain experienced",
+                "thal":     "a blood flow problem found during stress testing",
+                "oldpeak":  "irregular heart activity during exercise",
+                "thalach":  "maximum heart rate during exercise",
+                "slope":    "how the heart responds under physical stress",
+                "chol":     "cholesterol levels",
+                "trestbps": "resting blood pressure",
+                "age":      "age",
+                "sex":      "biological sex",
+                "fbs":      "blood sugar levels",
+                "restecg":  "resting heart electrical activity",
+                "exang":    "chest pain that occurs during exercise",
+            }
+            advice = {
+                "ca":       "Speak to a cardiologist. Blocked arteries need professional monitoring.",
+                "cp":       "Any chest pain should be evaluated by a doctor promptly.",
+                "thal":     "A blood flow issue detected under stress warrants specialist follow-up.",
+                "oldpeak":  "Avoid strenuous exercise without medical clearance.",
+                "thalach":  "A low peak heart rate may indicate reduced heart capacity — worth discussing with a doctor.",
+                "slope":    "The heart's stress response is concerning — a cardiology review is advisable.",
+                "chol":     "Reduce saturated fats, increase fibre, and exercise regularly to lower cholesterol.",
+                "trestbps": "Reduce salt intake, manage stress, and check blood pressure regularly.",
+                "fbs":      "Monitor blood sugar, reduce sugar and refined carbs, stay active.",
+                "exang":    "Stop exercise if chest pain occurs and seek medical advice.",
+            }
+            risk_label = "high" if risk >= 0.7 else "moderate" if risk >= 0.4 else "low"
+            sex_text   = "male" if f["sex"] == 1 else "female"
+            return (
+                f"Patient #{p['id']}: {int(f['age'])}-year-old {sex_text} from {p['site']}. "
+                f"Overall risk: {risk_label} ({risk*100:.0f}%).\n"
+                f"Warning signs: {', '.join(friendly.get(k, k) for k in drivers) or 'none identified'}.\n"
+                f"Reassuring signs: {', '.join(friendly.get(k, k) for k in protectors) or 'none identified'}.\n"
+                f"Key advice: {' '.join(advice[k] for k in drivers if k in advice) or 'Maintain a healthy lifestyle.'}"
+            )
 
-You have access to SHAP-based feature attributions for each patient. Answer questions clearly and concisely.
-Reference specific data values when available. Do not speculate beyond the data. Keep responses under 150 words."""
+        system_prompt = """You are HeartLens, a friendly heart health assistant.
+You explain heart disease risk assessments in plain, caring language that anyone can understand — no medical jargon, no scores or numbers, no abbreviations.
+
+When a user asks about a patient, always reply in four short sections using this exact format:
+**Overview** — one sentence on the overall risk in plain English (e.g. "low concern", "worth keeping an eye on", "needs prompt attention").
+**Warning signs** — what the concerning factors are, in everyday words.
+**Good signs** — what protective factors are present, in everyday words.
+**What you can do** — 2-3 practical, friendly lifestyle tips based on the warning signs. Also mention situations or environments to be cautious about (e.g. heavy exercise, high stress, smoking, high-altitude places, extreme heat).
+
+Never mention SHAP values, probabilities, percentages, or any technical scores.
+Keep each section to 1-2 sentences. Total response under 180 words.
+
+IMPORTANT: When a patient is selected, EVERY question — including "which factors matter most", "what affects them", "why", etc. — must be answered specifically for THAT patient using their individual data. Never fall back to population-level or general answers when a patient is active."""
 
         if patient:
-            system_prompt += f"""
-
-Currently selected patient #{patient['id']}:
-- Site: {patient['site']}
-- Risk: {patient['riskProb']:.2f}
-- Features: {json.dumps(patient['features'])}
-- Top SHAP: {json.dumps(dict(sorted(patient['shapValues'].items(), key=lambda x: abs(x[1]), reverse=True)[:5]))}"""
+            system_prompt += f"\n\nCurrently selected patient context:\n{_patient_plain(patient)}"
 
         # Build dataset summary
         system_prompt += f"""
@@ -405,35 +469,145 @@ def _template_chat(message, patient):
     """Fallback template-based chat responses."""
     q = message.lower()
 
-    # Patient-specific questions (requires a selected patient)
-    if patient and any(w in q for w in ["why", "explain", "risk", "this patient", "their", "diagnosis"]):
-        top = sorted(patient["shapValues"].items(), key=lambda x: abs(x[1]), reverse=True)[:5]
-        drivers = [f for f, v in top if v > 0]
-        protectors = [f for f, v in top if v < 0]
-        risk_pct = patient["riskProb"] * 100
-        risk_label = "high" if risk_pct >= 70 else "moderate" if risk_pct >= 40 else "low"
-        f = patient["features"]
-        sex = "male" if f["sex"] == 1 else "female"
+    # ── Feature/factor questions take priority — must come BEFORE the overview
+    # check so "risky features", "what factors", "which features" etc. don't get
+    # swallowed by the broad overview branch.
+    _feature_words = ["feature", "factor", "affect", "which", "what are", "risky feature",
+                      "risky factor", "important", "predictor", "variable", "attribute"]
+    if any(w in q for w in _feature_words):
+        # Re-use the feature-importance logic already defined below
+        friendly = {
+            "ca": "blocked blood vessels", "cp": "type of chest pain",
+            "thal": "blood flow under stress", "oldpeak": "heart activity during exercise",
+            "thalach": "peak heart rate", "slope": "heart stress response",
+            "chol": "cholesterol", "trestbps": "resting blood pressure",
+            "age": "age", "sex": "biological sex", "fbs": "blood sugar",
+            "restecg": "resting heart electrical activity", "exang": "exercise-induced chest pain",
+        }
+        if patient:
+            top = sorted(patient["shapValues"].items(), key=lambda x: abs(x[1]), reverse=True)[:5]
+            lines = []
+            for i, (feat, val) in enumerate(top):
+                direction = "pushes risk **up**" if val > 0 else "helps bring risk **down**"
+                lines.append(f"{i+1}. **{friendly.get(feat, FEATURE_LABELS[feat])}** — {direction}")
+            return (
+                f"**The 5 factors affecting Patient #{patient['id']} the most:**\n"
+                + "\n".join(lines)
+                + "\n\nThese are specific to this patient — other patients may rank differently."
+            )
+        importance = {}
+        for feat in RAW_FEATURES:
+            importance[feat] = sum(abs(p["shapValues"][feat]) for p in PATIENTS) / len(PATIENTS)
+        top5 = sorted(importance.items(), key=lambda x: x[1], reverse=True)[:5]
+        lines = [f"{i+1}. **{friendly.get(feat, FEATURE_LABELS[feat])}**"
+                 for i, (feat, _) in enumerate(top5)]
+        return ("**The factors that matter most across all patients:**\n"
+                + "\n".join(lines)
+                + "\n\nSelect a patient first to see which factors matter most *for them specifically*.")
 
-        resp = f"**Patient #{patient['id']}** is a {int(f['age'])}-year-old {sex} from {patient['site']} with a **{risk_label} risk** prediction of **{risk_pct:.0f}%**.\n\n"
-        if drivers:
-            resp += "**Risk drivers:**\n"
-            for feat in drivers:
-                v = patient["shapValues"][feat]
-                resp += f"- {FEATURE_LABELS[feat]}: {v:+.4f} SHAP impact\n"
-        if protectors:
-            resp += "\n**Protective factors:**\n"
-            for feat in protectors:
-                v = patient["shapValues"][feat]
-                resp += f"- {FEATURE_LABELS[feat]}: {v:+.4f} SHAP impact\n"
+    # Patient-specific overview (requires a selected patient)
+    # NOTE: "risk" removed intentionally — too broad, catches "risky features" etc.
+    if patient and any(w in q for w in ["why", "explain", "this patient", "their", "diagnosis", "tell", "about", "overview", "summary"]):
+        top = sorted(patient["shapValues"].items(), key=lambda x: abs(x[1]), reverse=True)[:6]
+        drivers    = [k for k, v in top if v > 0]
+        protectors = [k for k, v in top if v < 0]
+        risk_pct   = patient["riskProb"] * 100
+        f          = patient["features"]
+        sex        = "male" if f["sex"] == 1 else "female"
+
+        friendly = {
+            "ca":       "blocked blood vessels in the heart",
+            "cp":       "the type of chest pain experienced",
+            "thal":     "a blood flow problem found during stress testing",
+            "oldpeak":  "irregular heart activity during exercise",
+            "thalach":  "how high the heart rate climbed during exercise",
+            "slope":    "how the heart responded under physical stress",
+            "chol":     "cholesterol levels",
+            "trestbps": "resting blood pressure",
+            "age":      "age",
+            "sex":      "biological sex",
+            "fbs":      "blood sugar levels",
+            "restecg":  "resting heart electrical activity",
+            "exang":    "chest pain that occurs during exercise",
+        }
+        advice = {
+            "ca":       ("Blocked arteries are serious — a cardiologist appointment is strongly recommended.",
+                         "Avoid smoking and high-fat diets. Stressful environments and extreme physical exertion can be risky."),
+            "cp":       ("Chest pain should always be checked by a doctor.",
+                         "Avoid high-intensity exercise or high-altitude environments until evaluated."),
+            "thal":     ("A blood flow problem under stress needs specialist follow-up.",
+                         "Avoid extreme heat or cold, which can put extra strain on the heart."),
+            "oldpeak":  ("Irregular heart activity during exercise needs medical clearance before any strenuous activity.",
+                         "Keep exercise moderate and avoid smoke-filled or polluted environments."),
+            "thalach":  ("A lower peak heart rate may mean the heart is working harder than it should.",
+                         "Stick to light-to-moderate activity and avoid high-stress or high-altitude situations."),
+            "slope":    ("The heart's response to stress is a concern worth discussing with a doctor.",
+                         "Reduce daily stress where possible, and avoid sudden bursts of intense physical effort."),
+            "chol":     ("High cholesterol can be managed with a heart-healthy diet — cut saturated fats, eat more fibre.",
+                         "Avoid fast food and sedentary lifestyles."),
+            "trestbps": ("High blood pressure can be reduced by cutting salt, exercising regularly, and managing stress.",
+                         "Avoid very hot or very cold environments, which can spike blood pressure."),
+            "fbs":      ("Blood sugar can be improved by reducing sugary foods and staying active.",
+                         "Avoid processed foods and sedentary routines."),
+            "exang":    ("Stop any exercise the moment chest pain starts and seek medical advice.",
+                         "Avoid exercising alone, especially in remote or high-altitude places."),
+        }
+
+        if risk_pct >= 70:
+            overview = f"This {int(f['age'])}-year-old {sex} has several concerning signs that need prompt medical attention."
+        elif risk_pct >= 40:
+            overview = f"This {int(f['age'])}-year-old {sex} has some signs worth keeping a close eye on — a check-up is a good idea."
+        else:
+            overview = f"This {int(f['age'])}-year-old {sex} is looking fairly healthy overall, with a low level of concern for heart disease."
+
+        driver_text    = " and ".join(friendly.get(k, FEATURE_LABELS[k]) for k in drivers[:3]) if drivers else "nothing significant"
+        protector_text = " and ".join(friendly.get(k, FEATURE_LABELS[k]) for k in protectors[:3]) if protectors else "nothing identified"
+
+        resp  = f"**Overview**\n{overview}\n\n"
+        resp += f"**Warning signs**\nThe main concerns were {driver_text}.\n\n"
+        resp += f"**Good signs**\nOn the positive side, {protector_text} appeared healthy.\n\n"
+
+        tips = []
+        cautions = []
+        for k in drivers[:2]:
+            if k in advice:
+                tips.append(advice[k][0])
+                cautions.append(advice[k][1])
+        if not tips:
+            tips    = ["Maintain a balanced diet and exercise regularly."]
+            cautions = ["Avoid smoking and manage stress day-to-day."]
+
+        resp += "**What you can do**\n"
+        for tip in tips:
+            resp += f"- {tip}\n"
+        for c in cautions:
+            resp += f"- {c}\n"
+
         return resp
 
     # No patient selected but asking about a patient
-    if not patient and any(w in q for w in ["this patient", "why is", "their risk"]):
-        return "No patient is currently selected. Click on a patient in the **Population Overview** scatter plot first, then ask me about their risk factors."
+    if not patient and any(w in q for w in ["this patient", "why is", "their risk", "about", "tell"]):
+        return "No patient is currently selected. Please click on a patient in the **Population Overview** scatter plot first, then ask me about them."
 
-    # Number / count / total / selected questions
-    if any(w in q for w in ["how many", "count", "number", "total", "selected", "patients"]):
+    # Highest/lowest risk  — must come BEFORE the generic count check
+    if any(w in q for w in ["highest", "most at risk", "top risk", "riskiest", "worst", "dangerous"]):
+        top5 = sorted(PATIENTS, key=lambda p: p["riskProb"], reverse=True)[:5]
+        lines = []
+        for i, p in enumerate(top5):
+            f = p["features"]
+            sex = "male" if f["sex"] == 1 else "female"
+            risk_word = "very high" if p["riskProb"] >= 0.7 else "moderate"
+            lines.append(f"{i+1}. **Patient #{p['id']}** — {int(f['age'])}-year-old {sex} from {p['site']}, {risk_word} concern")
+        return "**Patients with the highest heart disease concern:**\n" + "\n".join(lines) + "\n\nClick any of them in the scatter plot to see their full profile."
+
+    if any(w in q for w in ["lowest", "safest", "least risk", "healthiest"]):
+        bottom5 = sorted(PATIENTS, key=lambda p: p["riskProb"])[:5]
+        lines = [f"{i+1}. **Patient #{p['id']}** ({p['site']}) — age {int(p['features']['age'])}, very low concern"
+                 for i, p in enumerate(bottom5)]
+        return "**Patients with the lowest heart disease concern:**\n" + "\n".join(lines)
+
+    # Number / count / total questions — generic, comes after specific queries
+    if any(w in q for w in ["how many", "count", "total", "selected"]) or q.strip() in ["patients", "dataset", "data"]:
         high = sum(1 for p in PATIENTS if p["riskProb"] >= 0.7)
         mod = sum(1 for p in PATIENTS if 0.4 <= p["riskProb"] < 0.7)
         low = sum(1 for p in PATIENTS if p["riskProb"] < 0.4)
@@ -445,12 +619,9 @@ def _template_chat(message, patient):
 
         resp = f"The dataset contains **{len(PATIENTS)} patients** total.\n\n"
         resp += "**By risk level:**\n"
-        resp += f"- High risk (>70%): **{high}** patients\n"
-        resp += f"- Moderate (40-70%): **{mod}** patients\n"
-        resp += f"- Low risk (<40%): **{low}** patients\n\n"
-        resp += "**By diagnosis:**\n"
-        resp += f"- Disease present: **{disease}** patients\n"
-        resp += f"- No disease: **{no_disease}** patients\n\n"
+        resp += f"- High concern: **{high}** patients\n"
+        resp += f"- Moderate concern: **{mod}** patients\n"
+        resp += f"- Low concern: **{low}** patients\n\n"
         resp += "**By hospital site:**\n"
         for s, pts in sites.items():
             resp += f"- {s}: **{len(pts)}** patients\n"
@@ -459,18 +630,16 @@ def _template_chat(message, patient):
             resp += f"\nCurrently viewing **Patient #{patient['id']}** ({patient['site']})."
         return resp
 
-    # Highest/lowest risk
-    if any(w in q for w in ["highest", "most at risk", "top risk", "riskiest", "worst"]):
-        top5 = sorted(PATIENTS, key=lambda p: p["riskProb"], reverse=True)[:5]
-        lines = [f"{i+1}. **Patient #{p['id']}** ({p['site']}) — {p['riskProb']*100:.0f}% risk, age {int(p['features']['age'])}"
-                 for i, p in enumerate(top5)]
-        return "**Highest-risk patients:**\n" + "\n".join(lines) + "\n\nClick on them in the scatter plot to see their SHAP explanations."
-
-    if any(w in q for w in ["lowest", "safest", "least risk", "healthiest"]):
-        bottom5 = sorted(PATIENTS, key=lambda p: p["riskProb"])[:5]
-        lines = [f"{i+1}. **Patient #{p['id']}** ({p['site']}) — {p['riskProb']*100:.0f}% risk, age {int(p['features']['age'])}"
-                 for i, p in enumerate(bottom5)]
-        return "**Lowest-risk patients:**\n" + "\n".join(lines)
+    # Catch-all for "patients" alone (dataset overview)
+    if "patients" in q and not any(w in q for w in ["this patient", "their", "about"]):
+        high = sum(1 for p in PATIENTS if p["riskProb"] >= 0.7)
+        mod  = sum(1 for p in PATIENTS if 0.4 <= p["riskProb"] < 0.7)
+        low  = sum(1 for p in PATIENTS if p["riskProb"] < 0.4)
+        return (
+            f"The dataset has **{len(PATIENTS)} patients** across 4 hospitals — "
+            f"**{high}** with high concern, **{mod}** moderate, and **{low}** low. "
+            f"Ask me 'which patients are most at risk?' or 'compare hospitals' to dig deeper."
+        )
 
     # Compare sites / hospitals
     if any(w in q for w in ["compare", "site", "hospital", "cleveland", "hungary", "switzerland", "long beach"]):
@@ -479,20 +648,11 @@ def _template_chat(message, patient):
             sites.setdefault(p["site"], []).append(p["riskProb"])
         lines = []
         for s, risks in sites.items():
-            avg = sum(risks) / len(risks) * 100
-            high = sum(1 for r in risks if r >= 0.7)
-            lines.append(f"- **{s}**: {len(risks)} patients, avg risk {avg:.1f}%, {high} high-risk")
-        return "**Breakdown by hospital site:**\n" + "\n".join(lines) + "\n\nSwitch the scatter plot color to **Hospital Site** mode to compare visually."
-
-    # Feature importance
-    if any(w in q for w in ["feature", "important", "shap", "predictor", "variable", "attribute"]):
-        importance = {}
-        for f in RAW_FEATURES:
-            importance[f] = sum(abs(p["shapValues"][f]) for p in PATIENTS) / len(PATIENTS)
-        top5 = sorted(importance.items(), key=lambda x: x[1], reverse=True)[:5]
-        lines = [f"{i+1}. **{FEATURE_LABELS[f]}** — mean |SHAP|: {v:.4f}"
-                 for i, (f, v) in enumerate(top5)]
-        return "**Most impactful features (global):**\n" + "\n".join(lines) + "\n\nClick on a feature in the beeswarm plot to highlight patients where it has high impact."
+            high  = sum(1 for r in risks if r >= 0.7)
+            low   = sum(1 for r in risks if r < 0.4)
+            level = "high" if high / len(risks) > 0.5 else "moderate" if high / len(risks) > 0.3 else "relatively low"
+            lines.append(f"- **{s}**: {len(risks)} patients — overall concern is {level} ({high} high-concern cases)")
+        return "**Heart disease concern by hospital:**\n" + "\n".join(lines) + "\n\nSwitch the scatter plot colour to **Hospital Site** to compare visually."
 
     # What-if / cholesterol / change
     if any(w in q for w in ["what if", "what-if", "change", "modify", "cholesterol", "lower", "reduce"]):
