@@ -7,11 +7,10 @@
     "Switzerland": 123
   },
   "target_distribution": {
-    "1": 509,
-    "0": 411
+    "0": 560,
+    "1": 360
   },
-  "best_cv_accuracy": 0.9011,
-  "base_value": 0.2338,
+  "base_value": -0.4355,
   "feature_names_encoded": [
     "age",
     "sex",
@@ -50,5 +49,22 @@
     "slope",
     "ca",
     "thal"
-  ]
+  ],
+  "cv_accuracy": 0.8995,
+  "test_accuracy": 0.8424,
+  "test_roc_auc": 0.9239,
+  "test_pr_auc": 0.8783,
+  "test_sensitivity": 0.7361,
+  "test_specificity": 0.9107,
+  "confusion_matrix": {
+    "tn": 102,
+    "fp": 10,
+    "fn": 19,
+    "tp": 53
+  },
+  "best_params": {
+    "learning_rate": 0.05,
+    "max_depth": 3,
+    "n_estimators": 200
+  }
 }

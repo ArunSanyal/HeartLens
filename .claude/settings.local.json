@@ -4,7 +4,8 @@
       "Bash(node --input-type=module --eval ' *)",
       "Bash(python -c \"import ast; ast.parse\\(open\\('app.py'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
       "Bash(python -c \"import anthropic; print\\('anthropic version:', anthropic.__version__\\)\")",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(python precompute.py)"
     ]
   }
 }

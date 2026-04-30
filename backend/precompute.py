@@ -9,9 +9,11 @@ import json
 import warnings
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import StratifiedKFold, GridSearchCV
+from sklearn.model_selection import StratifiedKFold, GridSearchCV, train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import (accuracy_score, classification_report,
+                             roc_auc_score, average_precision_score,
+                             confusion_matrix)
 import xgboost as xgb
 import shap
 import umap
@@ -111,6 +113,12 @@ def preprocess(df):
 
 def train_model(X, y):
     """Train XGBoost with 5-fold stratified CV. Single-threaded to avoid memory issues."""
+    print("\n  Splitting data: 80% train / 20% hold-out test...")
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+    print(f"  Train: {len(X_train)}  Test: {len(X_test)}")
+
     print("\n  Training XGBoost with GridSearchCV (n_jobs=1, memory-safe)...")
 
     param_grid = {
@@ -140,17 +148,49 @@ def train_model(X, y):
         verbose=1,
     )
 
-    grid_search.fit(X, y)
+    grid_search.fit(X_train, y_train)
 
     best_model = grid_search.best_estimator_
     print(f"\n  Best params: {grid_search.best_params_}")
-    print(f"  Best CV accuracy: {grid_search.best_score_:.4f}")
+    print(f"  Best CV accuracy (train folds): {grid_search.best_score_:.4f}")
 
-    y_pred = best_model.predict(X)
-    print(f"  Training accuracy: {accuracy_score(y, y_pred):.4f}")
-    print(f"\n{classification_report(y, y_pred)}")
+    # ── Evaluate on hold-out test set ──────────────────────────────────────────
+    y_pred      = best_model.predict(X_test)
+    y_prob      = best_model.predict_proba(X_test)[:, 1]
 
-    return best_model
+    test_acc    = accuracy_score(y_test, y_pred)
+    test_roc    = roc_auc_score(y_test, y_prob)
+    test_pr_auc = average_precision_score(y_test, y_prob)
+    cm          = confusion_matrix(y_test, y_pred)
+    tn, fp, fn, tp = cm.ravel()
+
+    print(f"\n{'='*50}")
+    print("  HOLD-OUT TEST SET EVALUATION")
+    print(f"{'='*50}")
+    print(f"  Accuracy        : {test_acc:.4f}")
+    print(f"  ROC-AUC         : {test_roc:.4f}")
+    print(f"  PR-AUC          : {test_pr_auc:.4f}")
+    print(f"\n  Confusion Matrix (threshold=0.5):")
+    print(f"              Pred 0   Pred 1")
+    print(f"  Actual 0  :  {tn:5d}    {fp:5d}   (TN / FP)")
+    print(f"  Actual 1  :  {fn:5d}    {tp:5d}   (FN / TP)")
+    print(f"\n  Sensitivity (Recall) : {tp/(tp+fn):.4f}  ← missed disease rate")
+    print(f"  Specificity          : {tn/(tn+fp):.4f}")
+    print(f"\n{classification_report(y_test, y_pred, target_names=['No Disease','Disease'])}")
+    print(f"{'='*50}")
+
+    eval_metrics = {
+        "cv_accuracy":   round(float(grid_search.best_score_), 4),
+        "test_accuracy": round(test_acc, 4),
+        "test_roc_auc":  round(test_roc, 4),
+        "test_pr_auc":   round(test_pr_auc, 4),
+        "test_sensitivity": round(float(tp/(tp+fn)), 4),
+        "test_specificity": round(float(tn/(tn+fp)), 4),
+        "confusion_matrix": {"tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp)},
+        "best_params":   grid_search.best_params_,
+    }
+
+    return best_model, eval_metrics
 
 
 # ── 3. SHAP Values ────────────────────────────────────────────────────────────
@@ -180,7 +220,7 @@ def compute_umap(X):
 # ── 5. Save Everything ────────────────────────────────────────────────────────
 
 def save_outputs(model, scaler, X_encoded, y, raw_features, full_df,
-                 shap_values, base_value, umap_embedding):
+                 shap_values, base_value, umap_embedding, eval_metrics):
     """Save model, data, SHAP, UMAP as files for the Flask API."""
 
     # Save model
@@ -245,10 +285,10 @@ def save_outputs(model, scaler, X_encoded, y, raw_features, full_df,
         "total_patients": len(patients),
         "sites": full_df["site"].value_counts().to_dict(),
         "target_distribution": y.value_counts().to_dict(),
-        "best_cv_accuracy": round(float(model.score(X_encoded, y)), 4),
         "base_value": round(base_value, 4),
         "feature_names_encoded": feature_names,
         "feature_names_original": raw_cols,
+        **eval_metrics,
     }
     with open(os.path.join(DATA_DIR, "stats.json"), "w") as f:
         json.dump(stats, f, indent=2, default=str)
@@ -271,7 +311,7 @@ def main():
     print(f"  Target distribution: {y.value_counts().to_dict()}")
 
     print("\n[3/5] Training XGBoost...")
-    model = train_model(X_encoded, y)
+    model, eval_metrics = train_model(X_encoded, y)
 
     print("\n[4/5] Computing SHAP + UMAP...")
     shap_values, base_value, explainer = compute_shap(model, X_encoded)
@@ -279,7 +319,7 @@ def main():
 
     print("\n[5/5] Saving outputs...")
     save_outputs(model, scaler, X_encoded, y, raw_features, full_df,
-                 shap_values, base_value, umap_embedding)
+                 shap_values, base_value, umap_embedding, eval_metrics)
 
     print("\n" + "=" * 60)
     print("Precompute complete! All files saved to data/")

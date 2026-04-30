@@ -407,6 +407,9 @@ HINDI_EXERCISE_ANSWER = (
 
 def _handle_chat(message, patient, history, language="en"):
     """Handle chat query with Claude API or fallback."""
+    # Auto-detect Hindi from Devanagari script even if toggle says 'en'
+    if any('ऀ' <= c <= 'ॿ' for c in message):
+        language = "hi"
     if language == "hi":
         if message.strip() == "मुझे क्या खाना चाहिए?":
             return HINDI_FOOD_ANSWER
