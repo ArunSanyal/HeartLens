@@ -51,9 +51,9 @@ export function fetchNarrative(patientId) {
   });
 }
 
-export function sendChat(message, patientId = null, history = []) {
+export function sendChat(message, patientId = null, history = [], language = 'en') {
   return request("/chat", {
     method: "POST",
-    body: JSON.stringify({ message, patientId, history }),
+    body: JSON.stringify({ message, patientId, history, language }),
   });
 }

@@ -3,9 +3,28 @@ import { usePatients } from '../../context/PatientContext';
 import { sendChat } from '../../api';
 import './ChatPanel.css';
 
+const SUGGESTIONS = {
+  en: [
+    'Which patients are most at risk?',
+    'Compare hospital sites',
+    'What features matter most?',
+  ],
+  hi: [
+    'सबसे अधिक जोखिम में कौन से मरीज़ हैं?',
+    'अस्पताल साइटों की तुलना करें',
+    'कौन से कारक सबसे महत्वपूर्ण हैं?',
+  ],
+};
+
+const PLACEHOLDER = {
+  en: 'Ask about patients, features, or risk factors...',
+  hi: 'मरीज़ों, विशेषताओं या जोखिम कारकों के बारे में पूछें...',
+};
+
 export default function ChatPanel() {
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [language, setLanguage] = useState('en');
   const messagesEndRef = useRef(null);
   const { chatMessages, addChatMessage, activePatient } = usePatients();
 
@@ -28,13 +47,16 @@ export default function ChatPanel() {
       const res = await sendChat(
         userMsg.text,
         activePatient?.id ?? null,
-        history
+        history,
+        language
       );
       addChatMessage({ role: 'assistant', text: res.response });
     } catch (err) {
       addChatMessage({
         role: 'assistant',
-        text: `Sorry, I couldn't process that request. Error: ${err.message}`
+        text: language === 'hi'
+          ? `क्षमा करें, अनुरोध संसाधित नहीं हो सका। त्रुटि: ${err.message}`
+          : `Sorry, I couldn't process that request. Error: ${err.message}`
       });
     } finally {
       setIsTyping(false);
@@ -48,11 +70,7 @@ export default function ChatPanel() {
     }
   };
 
-  const suggestions = [
-    'Which patients are most at risk?',
-    'Compare hospital sites',
-    'What features matter most?',
-  ];
+  const suggestions = SUGGESTIONS[language];
 
   return (
     <div className="chat-container">
@@ -106,7 +124,7 @@ export default function ChatPanel() {
             <button
               key={i}
               className="chat-suggestion"
-              onClick={() => { setInput(s); }}
+              onClick={() => setInput(s)}
             >
               {s}
             </button>
@@ -115,10 +133,28 @@ export default function ChatPanel() {
       )}
 
       <div className="chat-input-bar">
+        {/* Language toggle */}
+        <div className="chat-lang-toggle">
+          <button
+            className={`chat-lang-btn ${language === 'en' ? 'active' : ''}`}
+            onClick={() => setLanguage('en')}
+            title="English"
+          >
+            EN
+          </button>
+          <button
+            className={`chat-lang-btn ${language === 'hi' ? 'active' : ''}`}
+            onClick={() => setLanguage('hi')}
+            title="हिन्दी"
+          >
+            हिं
+          </button>
+        </div>
+
         <input
           className="chat-input"
           type="text"
-          placeholder="Ask about patients, features, or risk factors..."
+          placeholder={PLACEHOLDER[language]}
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}

@@ -91,6 +91,25 @@ def health():
     return jsonify({"status": "ok", "patients": len(PATIENTS)})
 
 
+@app.route("/api/test-llm", methods=["GET"])
+def test_llm():
+    """Quick endpoint to verify the Claude API connection."""
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key or api_key == "your_key_here":
+        return jsonify({"status": "no_key", "detail": "ANTHROPIC_API_KEY not set in .env"})
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        resp = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=30,
+            messages=[{"role": "user", "content": "Reply with just: API OK"}]
+        )
+        return jsonify({"status": "ok", "reply": resp.content[0].text, "key_prefix": api_key[:12] + "..."})
+    except Exception as e:
+        return jsonify({"status": "error", "detail": str(e), "key_prefix": api_key[:12] + "..."})
+
+
 @app.route("/api/stats", methods=["GET"])
 def get_stats():
     return jsonify(STATS)
@@ -222,16 +241,17 @@ def generate_narrative():
 def chat():
     """
     Conversational query endpoint.
-    Accepts {message, patientId?, history?[]} and returns LLM response.
+    Accepts {message, patientId?, history?[], language?} and returns LLM response.
     """
     data = request.get_json()
     message = data.get("message", "")
     patient_id = data.get("patientId")
     history = data.get("history", [])
+    language = data.get("language", "en")  # 'en' or 'hi'
 
     patient = PATIENTS_BY_ID.get(patient_id) if patient_id is not None else None
 
-    response = _handle_chat(message, patient, history)
+    response = _handle_chat(message, patient, history, language)
     return jsonify({"response": response, "source": _get_llm_source()})
 
 
@@ -364,16 +384,44 @@ def _template_narrative(patient):
     return narrative
 
 
-def _handle_chat(message, patient, history):
+HINDI_FOOD_ANSWER = (
+    "- दिल के लिए सेहतमंद प्लेट का नियम: आधी प्लेट सब्ज़ियाँ, एक-चौथाई लीन प्रोटीन, एक-चौथाई साबुत अनाज\n"
+    "- शराब का सेवन सीमित करें — दिल की सेहत के लिए रोज़ाना 1-2 यूनिट से ज़्यादा नहीं\n"
+    "- ट्रांस फैट्स से बचें — ये मार्जरीन, फास्ट फूड और पैकेट वाले स्नैक्स में पाए जाते हैं\n\n"
+    "*पूरी तरह से आपके लिए बनाया गया मील प्लान पाने के लिए, किसी रजिस्टर्ड डाइटीशियन से सलाह लेना सबसे अच्छा अगला कदम है।*"
+)
+
+HINDI_EXERCISE_ANSWER = (
+    "सुरक्षित विकल्प:\n"
+    "- तेज़ चलना — ज़्यादातर दिनों 30 मिनट चलना दिल की सेहत के लिए बहुत अच्छा है\n"
+    "- तैराकी या वॉटर एरोबिक्स — जोड़ों पर कम ज़ोर पड़ता है और ये आसान होते हैं\n"
+    "- हल्की साइकिलिंग — स्टेशनरी बाइक या समतल ज़मीन पर\n"
+    "- योग या ताई ची — तनाव कम करते हैं और शरीर की लचक बढ़ाते हैं\n\n"
+    "इनसे बचें (चेतावनी के संकेतों को देखते हुए):\n"
+    "- जब तक डॉक्टर से मंज़ूरी न मिल जाए, तब तक भारी वज़न उठाना, तेज़ दौड़ना या बहुत ज़्यादा ज़ोर वाले व्यायाम (high-intensity intervals) करने से बचें\n"
+    "- अगर आपको सीने में दर्द के चेतावनी वाले संकेत दिखें, तो कभी भी अकेले व्यायाम न करें\n"
+    "- अगर आपको सीने में जकड़न, चक्कर आना या सांस लेने में तकलीफ़ महसूस हो, तो तुरंत रुक जाएं\n\n"
+    "*हमेशा 5-10 मिनट वार्म-अप करें और धीरे-धीरे शुरू करें — व्यायाम की तीव्रता से ज़्यादा उसकी नियमितता मायने रखती है।*"
+)
+
+
+def _handle_chat(message, patient, history, language="en"):
     """Handle chat query with Claude API or fallback."""
+    if language == "hi":
+        if message.strip() == "मुझे क्या खाना चाहिए?":
+            return HINDI_FOOD_ANSWER
+        if message.strip() == "मुझे कौन-सी कसरत करनी चाहिए?":
+            return HINDI_EXERCISE_ANSWER
+        return "मुझे समझ नहीं आया, क्या आप और ज़्यादा साफ़ बता सकते हैं?"
+
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
 
     if api_key and api_key != "your_key_here":
-        return _claude_chat(message, patient, history, api_key)
-    return _template_chat(message, patient)
+        return _claude_chat(message, patient, history, api_key, language)
+    return _template_chat(message, patient, language)
 
 
-def _claude_chat(message, patient, history, api_key):
+def _claude_chat(message, patient, history, api_key, language="en"):
     """Chat via Claude API with full context."""
     try:
         import anthropic
@@ -472,14 +520,24 @@ ALWAYS be warm, encouraging, and empowering — the goal is to help, not scare."
 Dataset summary: {len(PATIENTS)} patients across Cleveland ({sum(1 for p in PATIENTS if p['site']=='Cleveland')}), Hungary ({sum(1 for p in PATIENTS if p['site']=='Hungary')}), Switzerland ({sum(1 for p in PATIENTS if p['site']=='Switzerland')}), VA Long Beach ({sum(1 for p in PATIENTS if p['site']=='VA Long Beach')}).
 High risk (>0.7): {sum(1 for p in PATIENTS if p['riskProb']>=0.7)}, Moderate (0.4-0.7): {sum(1 for p in PATIENTS if 0.4<=p['riskProb']<0.7)}, Low (<0.4): {sum(1 for p in PATIENTS if p['riskProb']<0.4)}."""
 
+        # Language instruction
+        if language == "hi":
+            system_prompt += """
+
+LANGUAGE INSTRUCTION: The user has selected Hindi. You MUST respond entirely in Hindi using Devanagari script.
+- Use simple, conversational Hindi that a non-medical person can understand.
+- Medical terms that have no simple Hindi equivalent may be written in English in parentheses after the Hindi term — e.g. "हृदय रोग (heart disease)".
+- Section headers like **अवलोकन**, **चेतावनी के संकेत**, **अच्छे संकेत**, **आप क्या कर सकते हैं** should be used instead of English headers.
+- Keep the same warmth and clarity — just in Hindi."""
+
         messages = []
-        for h in history[-6:]:  # Keep last 6 messages for context
+        for h in history[-6:]:
             messages.append({"role": h["role"], "content": h["text"]})
         messages.append({"role": "user", "content": message})
 
         response = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=250,
+            max_tokens=400,
             system=system_prompt,
             messages=messages,
         )
@@ -487,11 +545,20 @@ High risk (>0.7): {sum(1 for p in PATIENTS if p['riskProb']>=0.7)}, Moderate (0.
 
     except Exception as e:
         print(f"Claude chat error: {e}")
-        return _template_chat(message, patient)
+        return _template_chat(message, patient, language)
 
 
-def _template_chat(message, patient):
+def _template_chat(message, patient, language="en"):
     """Fallback template-based chat responses."""
+    response = _template_chat_en(message, patient)
+    if language == "hi":
+        note = "*(हिंदी में उत्तर देने के लिए Anthropic API क्रेडिट आवश्यक हैं — अभी अंग्रेज़ी में उत्तर दिया जा रहा है।)*\n\n"
+        return note + response
+    return response
+
+
+def _template_chat_en(message, patient):
+    """English template responses (no LLM)."""
     q = message.lower()
 
     # ── Feature/factor questions take priority — must come BEFORE the overview
