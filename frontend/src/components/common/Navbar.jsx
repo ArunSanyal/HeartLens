@@ -7,7 +7,7 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const isDashboard = location.pathname === '/dashboard';
+  const isAppPage = location.pathname === '/dashboard' || location.pathname.startsWith('/patient/');
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -15,8 +15,8 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Don't render on dashboard — it has its own header
-  if (isDashboard) return null;
+  // Don't render on full-screen app pages — they have their own headers
+  if (isAppPage) return null;
 
   const links = [
     { to: '/', label: 'Home' },

@@ -300,7 +300,7 @@ Write 3 short, friendly sentences a non-medical person can fully understand:
 Do NOT use any numbers, percentages, medical abbreviations, or technical scores."""
 
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=300,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -424,19 +424,44 @@ def _claude_chat(message, patient, history, api_key):
                 f"Key advice: {' '.join(advice[k] for k in drivers if k in advice) or 'Maintain a healthy lifestyle.'}"
             )
 
-        system_prompt = """You are HeartLens, a friendly heart health assistant.
-You explain heart disease risk assessments in plain, caring language that anyone can understand — no medical jargon, no scores or numbers, no abbreviations.
+        system_prompt = """You are HeartLens, a caring heart health assistant helping clinicians and patients understand risk assessments.
 
-When a user asks about a patient, always reply in four short sections using this exact format:
-**Overview** — one sentence on the overall risk in plain English (e.g. "low concern", "worth keeping an eye on", "needs prompt attention").
-**Warning signs** — what the concerning factors are, in everyday words.
-**Good signs** — what protective factors are present, in everyday words.
-**What you can do** — 2-3 practical, friendly lifestyle tips based on the warning signs. Also mention situations or environments to be cautious about (e.g. heavy exercise, high stress, smoking, high-altitude places, extreme heat).
+CORE RULES (always apply):
+- Never mention SHAP values, model scores, probabilities, percentages, or any technical numbers
+- Use plain everyday English — no medical abbreviations
+- Every answer when a patient is selected MUST be specific to THAT patient's individual data
+- Never give generic population-level answers when patient context is available
 
-Never mention SHAP values, probabilities, percentages, or any technical scores.
-Keep each section to 1-2 sentences. Total response under 180 words.
+RESPOND DIFFERENTLY BASED ON THE QUESTION TYPE:
 
-IMPORTANT: When a patient is selected, EVERY question — including "which factors matter most", "what affects them", "why", etc. — must be answered specifically for THAT patient using their individual data. Never fall back to population-level or general answers when a patient is active."""
+1. OVERVIEW / "tell me about" / "explain this patient":
+   Use four short labelled sections: **Overview** | **Warning signs** | **Good signs** | **What you can do**
+   Keep each section to 1-2 sentences. Total under 200 words.
+
+2. DIET / FOOD / NUTRITION / "what should I eat" / "what to eat":
+   Give 5-6 specific dietary tips tailored to this patient's warning signs.
+   Format as a bullet list. Cover: foods to avoid, foods to increase, hydration, portion guidance.
+   Example: if cholesterol is a concern → less saturated fat, more fibre, oats, nuts, fish.
+   If blood pressure is a concern → less salt, more potassium (bananas, leafy greens).
+   Be concrete and practical, not vague.
+
+3. EXERCISE / PHYSICAL ACTIVITY / FITNESS:
+   Based on the patient's specific risk factors, advise what types of exercise are safe (e.g. walking, swimming) and which to avoid (e.g. heavy lifting, sprinting).
+   Give 4-5 bullet points tailored to their warning signs.
+
+4. IMPROVE / LIFESTYLE / "what can they do" / "how to get healthier":
+   Give a comprehensive but friendly action plan covering: diet changes, exercise guidance, stress management, sleep, follow-up care.
+   Tailor EVERY tip to this patient's specific risk factors — do not give generic advice.
+   Use bullet points. Aim for 6-8 concrete, actionable tips.
+
+5. FOLLOW-UP questions (user already got an overview and asks a specific follow-up):
+   Do NOT repeat the overview structure. Answer the specific question directly and concisely.
+   If they ask "what else can they do?" after an overview, give new information — do not repeat.
+
+6. STRESS / MENTAL HEALTH / SLEEP:
+   Explain how stress and poor sleep relate to this patient's specific risk factors, and give practical tips.
+
+ALWAYS be warm, encouraging, and empowering — the goal is to help, not scare."""
 
         if patient:
             system_prompt += f"\n\nCurrently selected patient context:\n{_patient_plain(patient)}"
@@ -453,7 +478,7 @@ High risk (>0.7): {sum(1 for p in PATIENTS if p['riskProb']>=0.7)}, Moderate (0.
         messages.append({"role": "user", "content": message})
 
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=250,
             system=system_prompt,
             messages=messages,
@@ -505,9 +530,120 @@ def _template_chat(message, patient):
                 + "\n".join(lines)
                 + "\n\nSelect a patient first to see which factors matter most *for them specifically*.")
 
+    # ── Specific follow-up checks — must run BEFORE the broad overview so that
+    # "tell me what to eat / how to improve" doesn't get swallowed by "tell". ──
+
+    # Diet / food / nutrition questions
+    if any(w in q for w in ["eat", "diet", "food", "nutrition", "meal", "drink", "fruit",
+                             "vegetable", "grocery", "recipe", "calorie", "protein", "fat",
+                             "carb", "omega", "fibre", "fiber"]):
+        if patient:
+            s = patient["shapValues"]
+            top = sorted(s.items(), key=lambda x: abs(x[1]), reverse=True)[:4]
+            drivers = [k for k, v in top if v > 0]
+            tips = []
+            if "chol" in drivers:
+                tips += ["- **Reduce saturated fats** — cut red meat, butter, full-fat dairy, fried food",
+                         "- **Eat more soluble fibre** — oats, lentils, beans, and broccoli lower cholesterol",
+                         "- **Add omega-3s** — oily fish (salmon, mackerel) 2-3× per week"]
+            if "trestbps" in drivers:
+                tips += ["- **Cut back on salt** — avoid processed food, salty snacks, and canned soups",
+                         "- **Eat more potassium-rich foods** — bananas, spinach, avocado, sweet potatoes help lower blood pressure"]
+            if "fbs" in drivers:
+                tips += ["- **Limit sugary foods and refined carbs** — white bread, sugary drinks, pastries spike blood sugar",
+                         "- **Choose whole grains** — brown rice, wholemeal bread, oats for steady energy levels"]
+            if "ca" in drivers or "cp" in drivers or "thal" in drivers:
+                tips += ["- **Heart-healthy plate rule**: half the plate vegetables, quarter lean protein, quarter whole grains",
+                         "- **Limit alcohol** — no more than 1-2 units per day for heart health",
+                         "- **Avoid trans fats** — found in margarine, fast food, packaged snacks"]
+            if not tips:
+                tips = ["- **Plenty of vegetables and fruit** — aim for 5+ portions daily",
+                        "- **Choose whole grains** over white bread, white rice, and pasta",
+                        "- **Lean protein** — fish, chicken, legumes, and tofu over red/processed meat",
+                        "- **Healthy fats** — olive oil, nuts, avocado instead of butter or lard",
+                        "- **Stay hydrated** — 6-8 glasses of water per day",
+                        "- **Limit salt, sugar, alcohol, and processed foods**"]
+            return (
+                f"**Diet guidance for Patient #{patient['id']}** (tailored to their risk factors):\n\n"
+                + "\n".join(tips[:7])
+                + "\n\n*For a full personalised meal plan, a registered dietitian is the best next step.*"
+            )
+        return "Select a patient first and I'll give you dietary advice tailored to their specific risk factors."
+
+    # Health improvement / lifestyle questions
+    if any(w in q for w in ["improve", "better", "healthier", "healthy", "lifestyle", "tips",
+                             "advice", "recommend", "help", "what can", "how can", "what should",
+                             "how to", "do to", "prevent", "reduce risk", "stay well"]):
+        if patient:
+            f = patient["features"]
+            s = patient["shapValues"]
+            risk = patient["riskProb"]
+            top = sorted(s.items(), key=lambda x: abs(x[1]), reverse=True)[:4]
+            drivers = [k for k, v in top if v > 0]
+            protectors = [k for k, v in top if v < 0]
+            risk_word = "high" if risk >= 0.7 else "moderate" if risk >= 0.4 else "low"
+            friendly_d = {
+                "ca": "blocked blood vessels", "cp": "chest pain patterns",
+                "thal": "blood flow under stress", "oldpeak": "heart activity during exercise",
+                "thalach": "peak heart rate", "slope": "heart stress response",
+                "chol": "cholesterol", "trestbps": "blood pressure",
+                "age": "age", "sex": "sex", "fbs": "blood sugar",
+                "restecg": "resting heart activity", "exang": "exercise-induced chest pain",
+            }
+            lines = [f"**Health improvement plan for Patient #{patient['id']}** (overall risk: {risk_word}):\n"]
+            specific_advice = {
+                "ca":       "- **Cardiology referral** — blocked vessels need professional monitoring; avoid heavy exertion until cleared",
+                "cp":       "- **Report chest pain to a doctor** — any new or worsening chest pain needs prompt evaluation",
+                "thal":     "- **Follow up on the stress-test blood flow finding** with a cardiac specialist",
+                "oldpeak":  "- **Get medical clearance before strenuous exercise** — irregular heart activity during exercise is a key warning sign",
+                "thalach":  "- **Keep exercise light to moderate** — brisk walking, gentle cycling, swimming are good choices",
+                "chol":     "- **Heart-healthy diet**: reduce saturated fat, increase fibre (oats, legumes), add oily fish 2× per week",
+                "trestbps": "- **Reduce salt intake**, exercise regularly, and practice stress reduction (meditation, breathing exercises)",
+                "fbs":      "- **Manage blood sugar**: cut added sugars, choose whole grains, stay active daily",
+                "exang":    "- **Stop exercising immediately** if any chest pain occurs — and consult a doctor before resuming",
+                "slope":    "- **Discuss the stress test result** with a doctor — the heart's response pattern is worth reviewing",
+            }
+            for k in drivers[:3]:
+                if k in specific_advice:
+                    lines.append(specific_advice[k])
+            lines += [
+                "- **30 minutes of moderate activity** most days — walking, swimming, or cycling",
+                "- **7-8 hours of sleep per night** — poor sleep directly worsens heart health",
+                "- **Manage stress** — try breathing exercises, short walks, or mindfulness",
+                "- **Quit smoking** if applicable — it's the single biggest reversible heart risk",
+                "- **Regular check-ups** — blood pressure, cholesterol, and blood sugar should be monitored annually",
+            ]
+            return "\n".join(lines[:9])
+        return "Select a patient first and I'll build a personalised health improvement plan based on their risk factors."
+
+    # Exercise questions
+    if any(w in q for w in ["exercise", "workout", "gym", "run", "jog", "swim", "walk",
+                             "sport", "activity", "physical", "cardio", "training"]):
+        if patient:
+            s = patient["shapValues"]
+            top = sorted(s.items(), key=lambda x: abs(x[1]), reverse=True)[:4]
+            drivers = [k for k, v in top if v > 0]
+            safe = ["- **Brisk walking** — 30 minutes most days is excellent for heart health",
+                    "- **Swimming or water aerobics** — low-impact and easy on the joints",
+                    "- **Gentle cycling** — stationary bike or flat terrain",
+                    "- **Yoga or tai chi** — reduces stress and improves flexibility"]
+            avoid = []
+            if any(k in drivers for k in ["ca", "cp", "thal", "oldpeak"]):
+                avoid = ["- **Avoid heavy weightlifting, sprinting, or high-intensity intervals** until medically cleared",
+                         "- **Never exercise alone** if you have chest pain warning signs",
+                         "- **Stop immediately** if you feel chest tightness, dizziness, or shortness of breath"]
+            resp = f"**Exercise guidance for Patient #{patient['id']}:**\n\n**Safe options:**\n"
+            resp += "\n".join(safe)
+            if avoid:
+                resp += "\n\n**To avoid (given their warning signs):**\n" + "\n".join(avoid)
+            resp += "\n\n*Always warm up for 5-10 minutes and start slowly — consistency matters more than intensity.*"
+            return resp
+        return "Select a patient first to get exercise guidance tailored to their specific risk factors."
+
     # Patient-specific overview (requires a selected patient)
-    # NOTE: "risk" removed intentionally — too broad, catches "risky features" etc.
-    if patient and any(w in q for w in ["why", "explain", "this patient", "their", "diagnosis", "tell", "about", "overview", "summary"]):
+    # Keywords tightened: bare "tell" and "about" removed to avoid catching follow-up questions
+    if patient and any(w in q for w in ["why", "explain", "this patient", "their risk", "diagnosis",
+                                        "tell me about", "overview", "summary", "profile", "assess"]):
         top = sorted(patient["shapValues"].items(), key=lambda x: abs(x[1]), reverse=True)[:6]
         drivers    = [k for k, v in top if v > 0]
         protectors = [k for k, v in top if v < 0]
@@ -586,7 +722,7 @@ def _template_chat(message, patient):
         return resp
 
     # No patient selected but asking about a patient
-    if not patient and any(w in q for w in ["this patient", "why is", "their risk", "about", "tell"]):
+    if not patient and any(w in q for w in ["this patient", "why is", "their risk", "tell me about", "overview"]):
         return "No patient is currently selected. Please click on a patient in the **Population Overview** scatter plot first, then ask me about them."
 
     # Highest/lowest risk  — must come BEFORE the generic count check

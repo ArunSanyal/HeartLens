@@ -15,6 +15,7 @@ export default function PatientDetail() {
   const [showWhatIf, setShowWhatIf] = useState(false);
   const [whatIfResult, setWhatIfResult] = useState(null);
   const [whatIfLoading, setWhatIfLoading] = useState(false);
+  const [whatIfError, setWhatIfError] = useState(null);
   const { activePatient, narrative, narrativeLoading } = usePatients();
 
   useEffect(() => {
@@ -53,6 +54,7 @@ export default function PatientDetail() {
     if (whatIfTimer.current) clearTimeout(whatIfTimer.current);
     whatIfTimer.current = setTimeout(() => {
       setWhatIfLoading(true);
+      setWhatIfError(null);
       predictWhatIf(values)
         .then(res => {
           setWhatIfResult(res);
@@ -60,6 +62,7 @@ export default function PatientDetail() {
         })
         .catch(err => {
           console.error('What-if failed:', err);
+          setWhatIfError('Could not update prediction — make sure the backend is running.');
           setWhatIfLoading(false);
         });
     }, 500);
@@ -87,7 +90,7 @@ export default function PatientDetail() {
     const g = svg.append('g')
       .attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
 
-    const base = activePatient.baseValue;
+    const base = (whatIfResult && whatIfResult.baseValue != null) ? whatIfResult.baseValue : activePatient.baseValue;
     // Show only top 8 by |SHAP| — keeps the chart readable without crowding
     const items = sortedShap.slice(0, 8).map(([f, v]) => ({ feature: f, value: v }));
 
@@ -202,7 +205,7 @@ export default function PatientDetail() {
       .call(g => g.selectAll('.tick line').attr('stroke', '#e2e8f0'))
       .call(g => g.selectAll('.tick text').attr('fill', '#94a3b8').attr('font-size', '9px'));
 
-  }, [activePatient, sortedShap, dims]);
+  }, [activePatient, sortedShap, dims, whatIfResult]);
 
   if (!activePatient) {
     return (
@@ -256,6 +259,36 @@ export default function PatientDetail() {
             : '● This patient appears to be at low risk.'}
         </div>
 
+        {/* What-If result banner — shown when editor is active */}
+        {showWhatIf && (whatIfResult || whatIfLoading || whatIfError) && (
+          <div className={`detail-whatif-banner ${whatIfLoading ? 'loading' : ''}`}>
+            {whatIfLoading ? (
+              <span className="detail-whatif-banner__updating">Updating prediction…</span>
+            ) : whatIfError ? (
+              <span className="detail-whatif-banner__error">{whatIfError}</span>
+            ) : whatIfResult && (
+              <>
+                <span className="detail-whatif-banner__label">What-If Result</span>
+                <span className="detail-whatif-banner__old">{(activePatient.riskProb * 100).toFixed(0)}%</span>
+                <span className="detail-whatif-banner__arrow">→</span>
+                <span
+                  className="detail-whatif-banner__new"
+                  style={{ color: whatIfResult.riskProb > activePatient.riskProb ? '#ef4444' : '#22c55e' }}
+                >
+                  {(whatIfResult.riskProb * 100).toFixed(0)}%
+                </span>
+                <span
+                  className="detail-whatif-banner__delta"
+                  style={{ color: whatIfResult.riskProb > activePatient.riskProb ? '#ef4444' : '#22c55e' }}
+                >
+                  ({whatIfResult.riskProb > activePatient.riskProb ? '+' : ''}
+                  {((whatIfResult.riskProb - activePatient.riskProb) * 100).toFixed(0)} pts)
+                </span>
+              </>
+            )}
+          </div>
+        )}
+
         {/* LLM Narrative */}
         <div className="detail-narrative">
           <div className="detail-narrative__label">
@@ -263,12 +296,6 @@ export default function PatientDetail() {
             {narrativeLoading && <span className="detail-narrative__loading"> Generating...</span>}
           </div>
           <div className="detail-narrative__text">{narrative || 'Loading narrative...'}</div>
-          {whatIfResult && (
-            <div className="detail-narrative__whatif-risk">
-              What-If Prediction: <strong>{(whatIfResult.riskProb * 100).toFixed(0)}%</strong>
-              {whatIfLoading && ' (updating...)'}
-            </div>
-          )}
         </div>
 
         {/* What-if editor */}

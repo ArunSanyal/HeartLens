@@ -72,6 +72,28 @@
   margin-left: 4px;
 }
 
+.hl-patient-banner__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hl-patient-banner__deepdive {
+  text-decoration: none;
+  padding: 4px 14px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: inherit;
+  opacity: 0.85;
+  transition: opacity 0.15s, background 0.15s;
+}
+.hl-patient-banner__deepdive:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.06);
+}
+
 .hl-patient-banner__clear {
   background: transparent;
   border: 1px solid currentColor;

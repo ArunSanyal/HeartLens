@@ -7,7 +7,7 @@ import './PopulationScatter.css';
 const RISK_COLORS = ['#22c55e', '#84cc16', '#eab308', '#f97316', '#ef4444'];
 const SITE_COLORS = { Cleveland: '#3b82f6', Hungary: '#8b5cf6', Switzerland: '#f59e0b', 'VA Long Beach': '#10b981' };
 
-const MARGIN = { top: 24, right: 16, bottom: 36, left: 12 };
+const MARGIN = { top: 24, right: 16, bottom: 56, left: 40 };
 
 export default function PopulationScatter() {
   const svgRef = useRef(null);
@@ -130,15 +130,28 @@ export default function PopulationScatter() {
       });
     }
 
+    // ── Axis labels ───────────────────────────────────────────────────────
+    g.append('text')
+      .attr('x', innerW / 2).attr('y', innerH + 20)
+      .attr('text-anchor', 'middle')
+      .attr('fill', '#94a3b8').attr('font-size', '10px').attr('font-weight', '500')
+      .text('UMAP Dimension 1');
+
+    g.append('text')
+      .attr('transform', `translate(-30, ${innerH / 2}) rotate(-90)`)
+      .attr('text-anchor', 'middle')
+      .attr('fill', '#94a3b8').attr('font-size', '10px').attr('font-weight', '500')
+      .text('UMAP Dimension 2');
+
     // ── Bottom caption ────────────────────────────────────────────────────
     const caption = activeFeature
       ? `Dot size = how strongly "${FEATURE_LABELS[activeFeature] || activeFeature}" affects each patient's risk`
       : 'Each dot is one patient — patients closer together have more similar health profiles';
 
     g.append('text')
-      .attr('x', innerW / 2).attr('y', innerH + 26)
+      .attr('x', innerW / 2).attr('y', innerH + 40)
       .attr('text-anchor', 'middle')
-      .attr('fill', '#94a3b8').attr('font-size', '10px')
+      .attr('fill', '#94a3b8').attr('font-size', '9.5px')
       .text(caption);
 
     const hasBrush = selectedPatientIds.size > 0;

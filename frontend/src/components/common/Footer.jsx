@@ -3,7 +3,7 @@ import './Footer.css';
 
 export default function Footer() {
   const location = useLocation();
-  if (location.pathname === '/dashboard') return null;
+  if (location.pathname === '/dashboard' || location.pathname.startsWith('/patient/')) return null;
 
   return (
     <footer className="footer">

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { usePatients } from '../../context/PatientContext';
 import Header from '../common/Header';
 import PopulationScatter from '../views/PopulationScatter';
@@ -43,7 +44,6 @@ export default function Dashboard() {
     <div className="hl-dashboard">
       <Header />
 
-      {/* Patient banner — appears when a patient is selected */}
       {activePatient && (
         <div className={`hl-patient-banner hl-patient-banner--${riskLevel}`}>
           <div className="hl-patient-banner__info">
@@ -55,9 +55,17 @@ export default function Dashboard() {
             <span>{activePatient.site}</span>
             <span className="hl-patient-banner__risk-pill">{riskLabel} — {riskPct}</span>
           </div>
-          <button className="hl-patient-banner__clear" onClick={clearSelection}>
-            Clear
-          </button>
+          <div className="hl-patient-banner__actions">
+            <Link
+              to={`/patient/${activePatient.id}`}
+              className="hl-patient-banner__deepdive"
+            >
+              In-Depth View →
+            </Link>
+            <button className="hl-patient-banner__clear" onClick={clearSelection}>
+              Clear
+            </button>
+          </div>
         </div>
       )}
 
